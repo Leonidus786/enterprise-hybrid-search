@@ -1,0 +1,84 @@
+# Python bytecode and environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+ENV/
+.python-version.local
+
+# Packaging / build output
+build/
+dist/
+*.egg-info/
+.eggs/
+wheels/
+share/python-wheels/
+
+# Test, type-check, lint, and coverage caches
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.pytype/
+.ruff_cache/
+.hypothesis/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets.*
+secrets/
+.aws/
+.config/gcloud/
+
+# Local logs, results, and generated artifacts
+*.log
+logs/
+results/
+outputs/
+artifacts/
+
+# Downloaded models and ML caches (keep code and small sample data)
+models/
+.cache/
+.huggingface/
+.hf_cache/
+.cache/huggingface/
+.cache/torch/
+*.safetensors
+*.onnx
+*.pt
+*.pth
+*.ckpt
+
+# Private/local datasets. Keep the checked-in sample data files.
+data/private/
+data/local/
+data/production/
+data/*private*
+data/*personal*
+data/real_corpus*
+data/customer_corpus*
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Editors and operating systems
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+Desktop.ini

@@ -1,0 +1,6 @@
+# quick install:  pip install -r requirements.txt   (or: pip install -e ".[models,dev]")
+# TODO(you): after your first successful real-model run, pin exact versions with `pip freeze`.
+numpy
+sentence-transformers
+pytest
+pytest-cov

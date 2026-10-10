@@ -1,0 +1,72 @@
+[
+ {
+  "id": "q1",
+  "query": "why is my pod stuck in Pending",
+  "relevant": [
+   "k8s_pods"
+  ]
+ },
+ {
+  "id": "q2",
+  "query": "how do I route external traffic with TLS into the cluster",
+  "relevant": [
+   "k8s_ingress"
+  ]
+ },
+ {
+  "id": "q3",
+  "query": "feeding a wild yeast starter for bread",
+  "relevant": [
+   "sourdough"
+  ]
+ },
+ {
+  "id": "q4",
+  "query": "training loss diverges learning rate too high",
+  "relevant": [
+   "gradient"
+  ]
+ },
+ {
+  "id": "q5",
+  "query": "what is BM25 and when does it win",
+  "relevant": [
+   "bm25"
+  ]
+ },
+ {
+  "id": "q6",
+  "query": "why embeddings miss exact error codes",
+  "relevant": [
+   "dense"
+  ]
+ },
+ {
+  "id": "q7",
+  "query": "combine two retrievers without normalising scores",
+  "relevant": [
+   "rrf"
+  ]
+ },
+ {
+  "id": "q8",
+  "query": "second stage model that reads query and document together",
+  "relevant": [
+   "rerank"
+  ]
+ },
+ {
+  "id": "q9",
+  "query": "stop an agent loop after max attempts",
+  "relevant": [
+   "langgraph"
+  ]
+ },
+ {
+  "id": "q10",
+  "query": "which metric only looks at the first correct result",
+  "relevant": [
+   "ndcg"
+  ]
+ }
+]

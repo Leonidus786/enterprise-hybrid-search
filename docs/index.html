@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="A practical Python project combining BM25 keyword search, dense cosine retrieval, Reciprocal Rank Fusion, and optional cross-encoder reranking."
+    />
+    <meta name="theme-color" content="#0a0d12" />
+    <title>Enterprise Hybrid Search | Project Overview</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0a0d12;
+        --panel: #111720;
+        --panel-2: #171f2b;
+        --text: #f0f4f8;
+        --muted: #aab5c4;
+        --green: #7ee787;
+        --yellow: #eac45b;
+        --blue: #82b4ff;
+        --border: #2a3442;
+        --max: 1120px;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        background: radial-gradient(
+          ellipse at top right,
+          #172a2b 0,
+          var(--bg) 42rem
+        );
+        color: var(--text);
+        font:
+          16px/1.65 Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+      a {
+        color: var(--green);
+        text-underline-offset: 4px;
+      }
+      a:focus-visible,
+      button:focus-visible {
+        outline: 3px solid var(--yellow);
+        outline-offset: 3px;
+      }
+      .wrap {
+        width: min(var(--max), calc(100% - 36px));
+        margin: 0 auto;
+      }
+      header {
+        padding: 22px 0;
+        border-bottom: 1px solid var(--border);
+      }
+      .nav {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 20px;
+      }
+      .brand {
+        font-weight: 750;
+        letter-spacing: -0.03em;
+      }
+      .nav a {
+        font-size: 0.94rem;
+        margin-left: 18px;
+      }
+      .hero {
+        padding: 80px 0 56px;
+      }
+      .eyebrow {
+        color: var(--green);
+        font-size: 0.83rem;
+        text-transform: uppercase;
+        letter-spacing: 0.13em;
+        font-weight: 800;
+      }
+      h1 {
+        font-size: clamp(2.6rem, 6vw, 5.3rem);
+        line-height: 1.02;
+        letter-spacing: -0.055em;
+        max-width: 900px;
+        margin: 15px 0 22px;
+      }
+      h1 span {
+        color: var(--green);
+      }
+      .lead {
+        max-width: 780px;
+        color: var(--muted);
+        font-size: clamp(1.08rem, 2vw, 1.3rem);
+      }
+      .actions {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 28px;
+      }
+      .btn {
+        display: inline-flex;
+        padding: 11px 16px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        color: var(--text);
+        text-decoration: none;
+        font-weight: 700;
+        background: var(--panel);
+      }
+      .btn.primary {
+        background: var(--green);
+        color: #09110b;
+        border-color: var(--green);
+      }
+      .note {
+        border: 1px solid #5e5128;
+        border-left: 4px solid var(--yellow);
+        background: #19170f;
+        color: #f7e9b9;
+        padding: 15px 18px;
+        border-radius: 10px;
+        margin: 26px 0 0;
+        max-width: 920px;
+      }
+      section {
+        padding: 42px 0;
+      }
+      h2 {
+        font-size: clamp(1.7rem, 3vw, 2.3rem);
+        line-height: 1.15;
+        letter-spacing: -0.035em;
+        margin: 0 0 16px;
+      }
+      h3 {
+        margin: 0 0 8px;
+        font-size: 1.05rem;
+      }
+      .sub {
+        color: var(--muted);
+        max-width: 760px;
+        margin-top: 0;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+      }
+      .card {
+        padding: 20px;
+        background: rgba(17, 23, 32, 0.9);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+      }
+      .card p {
+        color: var(--muted);
+        margin-bottom: 0;
+      }
+      .tag {
+        display: inline-block;
+        padding: 3px 9px;
+        border-radius: 999px;
+        font-size: 0.78rem;
+        border: 1px solid var(--border);
+        color: var(--green);
+        margin-bottom: 12px;
+      }
+      .flow {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 10px;
+        align-items: stretch;
+        margin-top: 25px;
+      }
+      .step {
+        position: relative;
+        padding: 18px 13px;
+        min-height: 128px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+      }
+      .step:not(:last-child)::after {
+        content: "→";
+        position: absolute;
+        right: -13px;
+        top: 42%;
+        z-index: 2;
+        color: var(--yellow);
+        font-size: 1.25rem;
+        font-weight: 800;
+      }
+      .num {
+        color: var(--yellow);
+        font-weight: 800;
+        display: block;
+        font-size: 0.8rem;
+        margin-bottom: 8px;
+      }
+      .step p {
+        color: var(--muted);
+        font-size: 0.9rem;
+        margin-bottom: 0;
+      }
+      .demo-layout {
+        display: grid;
+        grid-template-columns: 0.9fr 1.1fr;
+        gap: 16px;
+        align-items: start;
+      }
+      .rank-list {
+        padding: 0;
+        margin: 10px 0 0;
+        list-style: none;
+      }
+      .rank-list li {
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+        border-top: 1px solid var(--border);
+        padding: 8px 0;
+        color: var(--muted);
+      }
+      .rank-list strong {
+        color: var(--text);
+        font-weight: 650;
+      }
+      .score {
+        color: var(--green);
+        font-variant-numeric: tabular-nums;
+      }
+      button {
+        font: inherit;
+        cursor: pointer;
+      }
+      .btn-action {
+        margin-top: 14px;
+        padding: 10px 14px;
+        border: 1px solid var(--green);
+        border-radius: 9px;
+        background: var(--green);
+        color: #09110b;
+        font-weight: 750;
+      }
+      .small {
+        font-size: 0.88rem;
+        color: var(--muted);
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+        margin-top: 22px;
+      }
+      .share-card {
+        width: 100%;
+        display: block;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        margin-top: 18px;
+      }
+      .stat strong {
+        display: block;
+        font-size: 1.55rem;
+        color: var(--green);
+        letter-spacing: -0.03em;
+      }
+      .status {
+        margin-top: 17px;
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+      footer {
+        border-top: 1px solid var(--border);
+        padding: 25px 0 40px;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+      .footer-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        margin-top: 10px;
+      }
+      @media (max-width: 760px) {
+        .nav {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+        .nav a {
+          margin: 0 14px 0 0;
+        }
+        .hero {
+          padding-top: 55px;
+        }
+        .grid,
+        .demo-layout,
+        .stats {
+          grid-template-columns: 1fr;
+        }
+        .flow {
+          grid-template-columns: 1fr;
+        }
+        .step {
+          min-height: auto;
+        }
+        .step:not(:last-child)::after {
+          content: "↓";
+          right: 18px;
+          top: auto;
+          bottom: -21px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="wrap nav">
+        <div class="brand">Enterprise Hybrid Search</div>
+        <nav aria-label="Main navigation">
+          <a href="#approach">Approach</a>
+          <a href="#rrf-demo">RRF explainer</a>
+          <a href="ARCHITECTURE.md">Architecture notes</a>
+          <a href="DECISIONS.md">Design decisions</a>
+        </nav>
+      </div>
+    </header>
+    <main class="wrap">
+      <section class="hero">
+        <div class="eyebrow">A retrieval engineering project</div>
+        <h1>Search with both <span>keywords</span> and meaning.</h1>
+        <p class="lead">
+          A modular Python pipeline exploring how BM25 keyword search and dense
+          embedding search can work together, with Reciprocal Rank Fusion and
+          optional cross-encoder reranking.
+        </p>
+        <div class="actions">
+          <a
+            class="btn primary"
+            href="https://github.com/Leonidus786/enterprise-hybrid-search"
+            >View source on GitHub</a
+          >
+          <a class="btn" href="ARCHITECTURE.md">Read the architecture</a>
+          <a class="btn" href="SOCIAL_POSTS.md">Project update copy</a>
+        </div>
+        <div class="note">
+          <strong>Honest status:</strong> 130 tests pass on the current local
+          baseline. The fake-model evaluation is only a smoke test. Real-model
+          quality benchmarks are still to be run; this page is a project
+          overview, not a hosted search API.
+        </div>
+      </section>
+
+      <section id="approach">
+        <h2>What is in the project?</h2>
+        <p class="sub">
+          The code is split into small components so retrieval, model adapters,
+          evaluation, and input validation can be tested independently.
+        </p>
+        <div class="grid">
+          <article class="card">
+            <span class="tag">01 · Sparse</span>
+            <h3>BM25 keyword retrieval</h3>
+            <p>
+              Scores exact token matches with Lucene-style IDF, term-frequency
+              saturation, and document-length normalisation.
+            </p>
+          </article>
+          <article class="card">
+            <span class="tag">02 · Dense</span>
+            <h3>Cosine-similarity retrieval</h3>
+            <p>
+              Uses injected embedding functions and NumPy to rank all indexed
+              chunks by cosine similarity.
+            </p>
+          </article>
+          <article class="card">
+            <span class="tag">03 · Fusion</span>
+            <h3>Reciprocal Rank Fusion</h3>
+            <p>
+              Combines ranked lists without directly adding scores that live on
+              different scales.
+            </p>
+          </article>
+          <article class="card">
+            <span class="tag">04 · Optional</span>
+            <h3>Cross-encoder reranking</h3>
+            <p>
+              Rescores a limited candidate pool after fusion. Real-model
+              effectiveness and latency still need measurement.
+            </p>
+          </article>
+          <article class="card">
+            <span class="tag">05 · Measure</span>
+            <h3>Evaluation metrics</h3>
+            <p>
+              Supports Precision@K, Recall@K, MRR, nDCG@K, and p50/p95 latency,
+              with separate document and chunk protocols.
+            </p>
+          </article>
+          <article class="card">
+            <span class="tag">06 · Validate</span>
+            <h3>Tests and guardrails</h3>
+            <p>
+              Includes input-schema checks and checks for invalid numeric
+              outputs, malformed shapes, ranking behavior, and edge cases.
+            </p>
+          </article>
+        </div>
+        <div class="flow" aria-label="Retrieval pipeline diagram">
+          <div class="step">
+            <span class="num">STEP 01</span>
+            <h3>Chunk text</h3>
+            <p>JSONL documents become overlapping word-window chunks.</p>
+          </div>
+          <div class="step">
+            <span class="num">STEP 02</span>
+            <h3>Retrieve twice</h3>
+            <p>BM25 and dense search produce independent rankings.</p>
+          </div>
+          <div class="step">
+            <span class="num">STEP 03</span>
+            <h3>Fuse rankings</h3>
+            <p>RRF combines the candidate lists using rank positions.</p>
+          </div>
+          <div class="step">
+            <span class="num">STEP 04</span>
+            <h3>Rerank (optional)</h3>
+            <p>A cross-encoder scores the fused candidate pool.</p>
+          </div>
+          <div class="step">
+            <span class="num">STEP 05</span>
+            <h3>Evaluate</h3>
+            <p>Compare quality metrics and latency before making claims.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="rrf-demo">
+        <h2>A tiny RRF explainer</h2>
+        <p class="sub">
+          This little browser demo uses made-up rankings to explain the fusion
+          formula. It does not call the Python search code or a hosted model.
+        </p>
+        <div class="demo-layout">
+          <div class="card">
+            <h3>Two sample rankings</h3>
+            <p class="small">
+              The first list is a hypothetical BM25 ranking; the second is a
+              hypothetical dense ranking.
+            </p>
+            <h3 style="margin-top: 18px">BM25</h3>
+            <ol class="rank-list">
+              <li><strong>doc-k8s</strong><span>rank 1</span></li>
+              <li><strong>doc-ingress</strong><span>rank 2</span></li>
+              <li><strong>doc-rrf</strong><span>rank 3</span></li>
+            </ol>
+            <h3 style="margin-top: 18px">Dense</h3>
+            <ol class="rank-list">
+              <li><strong>doc-rrf</strong><span>rank 1</span></li>
+              <li><strong>doc-k8s</strong><span>rank 2</span></li>
+              <li><strong>doc-embeddings</strong><span>rank 3</span></li>
+            </ol>
+            <button id="recalc" class="btn-action" type="button">
+              Recalculate fusion
+            </button>
+          </div>
+          <div class="card">
+            <h3>Fused order</h3>
+            <p class="small">
+              RRF score = sum of 1 / (c + rank), using c = 60 here. Higher
+              scores rank first.
+            </p>
+            <ol id="fused" class="rank-list" aria-live="polite"></ol>
+            <p class="small">
+              A document appearing high in both lists can beat a document that
+              appears near the top of only one list. RRF ignores raw score
+              magnitude and uses ranking positions.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Current progress</h2>
+        <p class="sub">
+          This project is being built and measured in public. The baseline
+          focuses on getting the retrieval mechanics and evaluation code right
+          before drawing quality conclusions.
+        </p>
+        <div class="stats">
+          <div class="card stat">
+            <strong>130</strong>tests passing on the current local baseline
+          </div>
+          <div class="card stat">
+            <strong>4</strong>strategies in the evaluation CLI
+          </div>
+          <div class="card stat">
+            <strong>Not yet</strong>real-model quality validated
+          </div>
+        </div>
+        <p class="status">
+          Next: run the BGE + MiniLM setup on labeled data, record retrieval and
+          latency results, and then build a small real search UI/API. Feedback
+          on the evaluation approach is welcome.
+        </p>
+      </section>
+      <section>
+        <h2>Share the project</h2>
+        <p class="sub">
+          A social card you can use when posting updates. The project link in
+          your post should point to the repository once it is public.
+        </p>
+        <img
+          class="share-card"
+          src="../assets/enterprise-hybrid-search-social-card.png"
+          alt="Enterprise Hybrid Search project card: BM25, dense retrieval, RRF fusion, optional reranking, and evaluation status"
+          loading="lazy"
+        />
+      </section>
+    </main>
+    <footer>
+      <div class="wrap">
+        <strong>Enterprise Hybrid Search</strong> · Python · NumPy · Sentence
+        Transformers (optional model dependencies)
+        <div class="footer-links">
+          <a href="https://github.com/Leonidus786/enterprise-hybrid-search"
+            >GitHub repository</a
+          >
+          <a href="ARCHITECTURE.md">Architecture</a>
+          <a href="DECISIONS.md">Design decisions</a>
+          <a href="SOCIAL_POSTS.md">Social post drafts</a>
+        </div>
+        <p>
+          Before publishing, replace <code>Leonidus786</code> in this file with
+          the actual GitHub username.
+        </p>
+      </div>
+    </footer>
+    <script>
+      (function () {
+        const rankings = [
+          ["doc-k8s", "doc-ingress", "doc-rrf"],
+          ["doc-rrf", "doc-k8s", "doc-embeddings"],
+        ];
+        const constant = 60;
+        const output = document.getElementById("fused");
+        function render() {
+          const scores = new Map();
+          const firstSeen = new Map();
+          rankings.forEach((ranking) => {
+            const seen = new Set();
+            ranking.forEach((doc, index) => {
+              if (seen.has(doc)) return;
+              seen.add(doc);
+              if (!firstSeen.has(doc)) firstSeen.set(doc, firstSeen.size);
+              scores.set(
+                doc,
+                (scores.get(doc) || 0) + 1 / (constant + index + 1),
+              );
+            });
+          });
+          const items = Array.from(scores.entries()).sort((a, b) => {
+            const delta = b[1] - a[1];
+            return Math.abs(delta) > 1e-12
+              ? delta
+              : firstSeen.get(a[0]) - firstSeen.get(b[0]);
+          });
+          output.replaceChildren();
+          items.forEach(([doc, score]) => {
+            const li = document.createElement("li");
+            const name = document.createElement("strong");
+            const value = document.createElement("span");
+            name.textContent = doc;
+            value.className = "score";
+            value.textContent = score.toFixed(5);
+            li.append(name, value);
+            output.append(li);
+          });
+        }
+        document.getElementById("recalc").addEventListener("click", render);
+        render();
+      })();
+    </script>
+  </body>
+</html>

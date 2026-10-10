@@ -1,0 +1,14 @@
+{"doc_id": "k8s_pods", "text": "Kubernetes schedules pods onto nodes using the kube-scheduler. Resource requests and limits decide placement and a pod stuck in Pending usually means no node fits its requests."}
+{"doc_id": "k8s_ingress", "text": "An Ingress resource routes external HTTP traffic to services inside the cluster. An ingress controller such as nginx implements the rules and handles TLS termination."}
+{"doc_id": "sourdough", "text": "Sourdough bread relies on a wild yeast starter. Feed the starter flour and water daily, let the dough ferment slowly, then bake in a hot dutch oven for a crisp crust."}
+{"doc_id": "gradient", "text": "Gradient descent updates model weights by stepping against the gradient of the loss. Learning rate controls step size and too large a value makes training diverge."}
+{"doc_id": "transformers", "text": "Transformers use self-attention to weigh every token against every other token. Positional encodings give the model word order since attention itself is permutation invariant."}
+{"doc_id": "bm25", "text": "BM25 is a sparse ranking function based on term frequency and inverse document frequency with length normalisation. It excels at exact keyword and identifier matches."}
+{"doc_id": "dense", "text": "Dense retrieval embeds queries and documents into vectors and ranks by cosine similarity. It captures paraphrases and meaning but can miss rare exact terms like error codes."}
+{"doc_id": "rrf", "text": "Reciprocal Rank Fusion merges ranked lists by summing one over k plus rank for each document. It needs no score normalisation across retrievers and is robust in practice."}
+{"doc_id": "rerank", "text": "A cross-encoder reads the query and a candidate together and outputs a relevance score. It is far more accurate than bi-encoders but too slow to run on the whole corpus."}
+{"doc_id": "docker", "text": "A Dockerfile defines an image layer by layer. Use a slim base image, copy requirements first to cache dependencies, and expose the port that uvicorn listens on."}
+{"doc_id": "fastapi", "text": "FastAPI builds on Pydantic models for request validation. Invalid payloads return a 422 response automatically and dependency injection keeps handlers testable."}
+{"doc_id": "langgraph", "text": "LangGraph models an agent as a state graph with nodes and conditional edges. A retry counter stored in state lets a router stop after a maximum number of attempts."}
+{"doc_id": "pytest", "text": "Pytest fixtures provide reusable setup. Parametrize runs one test over many inputs and monkeypatch swaps out network calls so tests stay fast and deterministic."}
+{"doc_id": "ndcg", "text": "nDCG rewards placing relevant documents near the top by discounting gain with a log of the rank. MRR looks only at the first relevant hit while recall at k measures coverage."}
