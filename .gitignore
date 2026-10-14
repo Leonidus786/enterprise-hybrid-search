@@ -82,3 +82,12 @@ data/customer_corpus*
 .DS_Store
 Thumbs.db
 Desktop.ini
+# Downloaded benchmark dataset
+data/raw/
+
+# Generated benchmark conversions
+data/scifact_test/
+data/scifact_train/
+
+# Local embedding cache
+.cache/

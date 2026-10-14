@@ -3,7 +3,7 @@
 def sentence_embedder(name="BAAI/bge-small-en-v1.5"):
     from sentence_transformers import SentenceTransformer
     m = SentenceTransformer(name)
-    return lambda texts: m.encode(texts, normalize_embeddings=True, batch_size=64)
+    return lambda texts: m.encode(texts, normalize_embeddings=True, batch_size=64, show_progress_bar=True)
 
 def cross_encoder_scorer(name="cross-encoder/ms-marco-MiniLM-L-6-v2"):
     from sentence_transformers import CrossEncoder
