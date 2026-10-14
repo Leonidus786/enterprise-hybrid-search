@@ -13,8 +13,8 @@ BGE_PREFIX = "Represent this sentence for searching relevant passages: "
 
 def build_parser():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--corpus", default="data/corpus.jsonl")
-    ap.add_argument("--queries", default="data/queries.json")
+    ap.add_argument("--corpus", default="data/sample/corpus.jsonl")
+    ap.add_argument("--queries", default="data/sample/queries.json")
     ap.add_argument("--k", type=int, default=10)
     ap.add_argument("--candidate-k", type=int, default=50, help="chunks passed to the cross-encoder")
     ap.add_argument("--level", choices=["doc", "chunk"], default="doc")

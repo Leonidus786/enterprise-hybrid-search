@@ -1,39 +1,43 @@
-# GitHub and GitHub Pages publishing checklist
+# Enterprise Hybrid Search — Maintenance and Release Checklist
 
-The source project is ready to publish, but the repository and Pages URL depend on your GitHub account. This checklist does not push anything automatically; it keeps the target and credentials under your control.
+This checklist is for maintaining the existing public repository and GitHub Pages site. It does not create repositories, push commits, or publish posts automatically. Review every change locally before committing or pushing.
 
-## 1. Choose the repository URL
+## Project links
 
-Create a **public** GitHub repository named `enterprise-hybrid-search`. If you are pushing an existing local repository, first check whether `origin` already points to the right place:
+- Repository: https://github.com/Leonidus786/enterprise-hybrid-search
+- GitHub Pages: https://Leonidus786.github.io/enterprise-hybrid-search/
+- Default branch: `main`
+- Pages source: `main` branch, `/docs` folder
+- Baseline tag: `v0.3-baseline` (local tag; push it separately if you choose to publish it)
+
+The GitHub Pages site is a static project overview with a small illustrative RRF explainer. It is not a hosted Python search API or a live search engine.
+
+## 1. Check the working tree before starting
+
+From `E:\enterprise-hybrid-search`, run:
 
 ```bat
-git remote -v
 git status --short
 git branch --show-current
+git remote -v
+git log -1 --oneline
+git tag --list v0.3-baseline
 ```
 
-If you are creating a new GitHub repository for an existing local project, create it empty (do not add a second README or `.gitignore` on GitHub). Do not replace an existing remote until you have checked what it points to.
+Confirm that the `origin` remote points to the intended repository. Do not overwrite project files with a ZIP or another workspace without reviewing differences first.
 
-## 2. Replace the username placeholder
+## 2. Keep sample data separate from benchmarks
 
-Before publishing, search for `Leonidus786` in `README.md`, `docs/index.html`, and `docs/SOCIAL_POSTS.md`. Replace it with your exact GitHub username. In VS Code, use **Ctrl+Shift+H** with `Leonidus786` as the search text.
+- Toy sample corpus: `data/sample/corpus.jsonl`
+- Toy sample queries: `data/sample/queries.json`
+- The sample corpus has 14 documents and 10 labeled queries. It is useful for smoke testing, not for general retrieval-quality claims.
+- Keep official benchmark data and generated results in clearly named, ignored directories. Do not commit downloaded model caches, private data, credentials, or large generated files unless intentionally required and reviewed.
+- For a standard document-level SciFact comparison, index one item per original corpus document. Do not silently apply the project's chunking pipeline to a benchmark intended to rank original documents.
+- Preserve original query IDs, document IDs, relevance judgments, and any relevance grades when preparing benchmark data.
 
-## 3. Copy the launch files into your existing project
+## 3. Required local checks before a code commit
 
-Copy these files from the launch kit into the matching locations in your local `E:\enterprise-hybrid-search` project:
-
-- `README.md`
-- `.gitignore`
-- `docs/index.html`
-- `docs/SOCIAL_POSTS.md`
-- `docs/PUBLISHING_CHECKLIST.md`
-- `assets/enterprise-hybrid-search-social-card.png`
-
-The full GitHub-ready ZIP also contains the project source and tests. If your local project has any changes that are not in that ZIP, **do not overwrite the whole folder**; copy only the files listed above.
-
-## 4. Run checks before pushing
-
-From your project root, run:
+Run from the project root:
 
 ```bat
 uv run python -m pytest -q
@@ -42,52 +46,68 @@ git diff --check
 git status --short
 ```
 
-Review `git status` and the staged diff before committing. Never commit `.env` files, credentials, private corpora, model caches, or customer data. The `.gitignore` prevents many common local files from being added, but it does not remove files already tracked by Git or erase secrets from Git history. If a secret was ever committed, rotate/revoke it and clean history before publishing.
+The full test suite must pass before the implementation is considered complete. During deliberate test-driven development, newly added tests may temporarily fail because their implementations have not been written yet; do not commit a partially implemented feature as complete.
 
-## 5. Commit and push
+Fake-model evaluation is a smoke test only. Do not use its metrics as evidence of search relevance or production performance.
 
-Stage only the launch changes first:
+For real-model or benchmark runs, save the dataset/split, configuration, model identifiers and revisions, code commit, environment, per-query rankings, metrics, and latency measurements. Clearly distinguish sample-data results from standardized benchmark results.
+
+## 4. Review changes before committing
+
+Review only the intended files:
 
 ```bat
-git add README.md .gitignore docs/index.html docs/SOCIAL_POSTS.md docs/PUBLISHING_CHECKLIST.md assets/enterprise-hybrid-search-social-card.png
+git diff --check
+git status --short
+git --no-pager diff --stat
+git --no-pager diff
+```
+
+Then stage specific files rather than blindly adding everything:
+
+```bat
+git add <intended-file-1> <intended-file-2>
 git diff --cached --check
 git diff --cached --stat
 git status --short
 ```
 
-If the staged files look right, commit and push. If your branch is `main` and `origin` is already correct:
+Before committing, check for `.env` files, tokens, private corpora, model caches, generated result files, and unrelated edits. `.gitignore` does not remove files already tracked by Git and does not erase secrets from Git history. If a secret was committed, revoke or rotate it.
 
-```bat
-git commit -m "docs: prepare hybrid search project launch"
-git push -u origin main
-```
+Commit a single logical change at a time, with a message that describes it. Do not push until you have reviewed the commit and confirmed the remote and branch.
 
-If no remote exists yet, add the actual URL first (replace the username):
+## 5. Benchmark reporting requirements
 
-```bat
-git remote add origin https://github.com/Leonidus786/enterprise-hybrid-search.git
-git push -u origin main
-```
+For an external benchmark, record the exact protocol and configuration. Do not assume a difference from a published BM25 number automatically means there is a bug; first match corpus fields, preprocessing, tokenization/analyzer, BM25 parameters, ranking unit, query split, relevance judgments, and metric implementation as closely as possible.
 
-If your current branch is not `main`, use the branch shown by `git branch --show-current` and verify the target before pushing.
+Report cutoffs correctly. For example, Recall@100 can use the top 100 results, while Precision@10, MRR@10, and nDCG@10 must be computed using their top-10 protocol. Keep per-query results so paired comparisons can be analysed.
 
-## 6. Publish the project overview page
+When comparing systems, report per-query paired metric differences and confidence intervals for those differences, along with effect size and win/loss counts. Record latency environment, warm-up policy, and number of measured runs. Avoid performance claims that the dataset or measurements cannot support.
 
-After the repository files are pushed:
+## 6. Maintain the GitHub Pages site
 
-1. Open the repository on GitHub.
-2. Go to **Settings → Pages**.
-3. Under build and deployment, select **Deploy from a branch**.
-4. Choose branch `main`, folder `/docs`, then save.
-5. Wait for the Pages deployment to finish. GitHub will show the published URL.
+- Keep `docs/index.html` claims consistent with the latest verified project state.
+- If a real-model run has only been performed on the small sample corpus, say that representative benchmark validation is still pending.
+- The RRF explainer uses made-up rankings. Keep it clearly labeled as illustrative and not connected to the Python retrieval pipeline.
+- GitHub Pages publishes the `docs/` directory, so any image used by the page must also be inside `docs/`. For the social card, keep a copy at `docs/assets/enterprise-hybrid-search-social-card.png` and reference it from `docs/index.html` as `assets/enterprise-hybrid-search-social-card.png`.
+- Check that the GitHub repository and Pages links use the correct username: `Leonidus786`. Do not replace it with a placeholder.
+- After you push a reviewed commit yourself, wait for the Pages deployment to finish and verify the site, links, images, and mobile layout in a browser.
 
-The expected project-page URL is `https://Leonidus786.github.io/enterprise-hybrid-search/` after replacing the username. It is a static overview page with a small illustrative RRF ranking demo. **It is not a hosted endpoint for the Python retrieval engine.** A real search UI/API can be built and deployed as a later step.
+## 7. Before sharing a project update
 
-## 7. Before sharing on LinkedIn or X
+- Confirm the repository is public and the repository link works while signed out.
+- Confirm the GitHub Pages site loads and all images resolve.
+- Link to reproducible benchmark results only after the protocol and data have been verified.
+- State limitations plainly. Keep fake-model smoke-test results separate from real-model quality results.
+- Do not claim that a hosted search API, production deployment, authentication, persistent vector database, or full browser search UI exists until it has actually been implemented and verified.
+- No `LICENSE` file was present at the baseline checkpoint. Choose and add a license before claiming that others may freely reuse or redistribute the project.
 
-- Confirm the repository is public and the GitHub URL opens while signed out.
-- Confirm the GitHub Pages URL loads.
-- Attach `assets/enterprise-hybrid-search-social-card.png` to the post.
-- Use the drafts in `docs/SOCIAL_POSTS.md` and replace the repository placeholder.
-- Keep the caveat that fake evaluation is only a smoke test; do not present those numbers as real retrieval performance.
-- The repository currently has no `LICENSE` file. Decide on a license before telling people the project is open source or granting reuse rights.
+## 8. Suggested project milestones
+
+1. Finish and review the sample-data path and documentation cleanup.
+2. Implement and test the BEIR adapter and embedding cache.
+3. Add correct multi-cutoff evaluation and save reproducible benchmark outputs.
+4. Run SciFact evaluation and analyse errors and paired metric differences.
+5. Build and label an enterprise-domain evaluation set; tune on development data and report held-out test results.
+6. Build the search API and a polished comparison UI after the evaluation contract is stable.
+7. Add Docker, CI validation, setup documentation, and a live demo when each is verified.

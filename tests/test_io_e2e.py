@@ -3,7 +3,7 @@ from hs.io import load_chunks, load_queries
 from hs.pipeline import HybridPipeline
 from hs.evaluate import evaluate
 
-DATA = Path(__file__).resolve().parent.parent / "data"
+DATA = Path(__file__).resolve().parent.parent / "data" / "sample"
 
 def test_load_chunks_reads_jsonl_and_chunks_each_doc():
     chunks = load_chunks(DATA / "corpus.jsonl", size=50, overlap=10)

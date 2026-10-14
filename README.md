@@ -4,7 +4,7 @@
 
 Enterprise Hybrid Search explores a common retrieval problem: keyword search is good at finding exact terms, IDs, and error codes, while dense retrieval can find related meaning even when the wording differs. This project runs both retrievers, combines their rankings with Reciprocal Rank Fusion (RRF), and can optionally rerank the candidates with a cross-encoder.
 
-> **Current status:** the Python retrieval pipeline and evaluation CLI are implemented, and the test suite passes locally (130 tests). The offline fake-model evaluation is only a smoke test—not evidence of real retrieval quality. Real-model benchmark results, a hosted search API, and a full web UI are not yet verified or included.
+> **Current status:** The retrieval pipeline and evaluation CLI are implemented, with 130 passing baseline tests. Fake-model evaluation is for smoke testing only. A real-model evaluation has run on the small sample dataset, but a representative external benchmark has not yet been validated. A hosted search API and complete browser UI are still pending.
 
 <p align="center">
   <img src="assets/enterprise-hybrid-search-social-card.png" alt="Enterprise Hybrid Search: BM25 and dense retrieval combined with RRF and optional reranking" width="100%" />
@@ -50,7 +50,7 @@ JSONL documents
              nDCG@K, p50/p95
 ```
 
-Read more: [Architecture](docs/ARCHITECTURE.md) · [Engineering decisions](docs/DECISIONS.md) · [Project overview page](https://Leonidus786.github.io/enterprise-hybrid-search/). Before publishing, replace `Leonidus786` with your GitHub username in the README and site files.
+Read more: [Architecture](docs/ARCHITECTURE.md) · [Engineering decisions](docs/DECISIONS.md) · [Project overview page](https://Leonidus786.github.io/enterprise-hybrid-search/).
 
 ## Quick start
 
@@ -97,7 +97,7 @@ The first real-model run downloads the configured Sentence Transformers models a
 - Embeddings: `BAAI/bge-small-en-v1.5`
 - Reranker: `cross-encoder/ms-marco-MiniLM-L-6-v2`
 
-Real-model results have **not been validated for this release**. Review the data and relevance labels before treating the output as a benchmark. For CPU/GPU memory constraints, see the [Sentence Transformers documentation](https://www.sbert.net/).
+A real-model evaluation has completed on the small sample corpus, but these results are not a representative benchmark and do not establish general retrieval quality. Review the data and relevance labels before treating the output as a benchmark. For CPU/GPU memory constraints, see the [Sentence Transformers documentation](https://www.sbert.net/).
 
 ### Install with pip instead
 
@@ -116,7 +116,7 @@ python scripts/run_eval.py
 
 ## Evaluation data
 
-The repository includes a small example corpus of **14 documents** at `data/corpus.jsonl` and **10 labeled queries** at `data/queries.json`. This is a learning/evaluation starter set, not a representative enterprise dataset.
+The repository includes a small example corpus of **14 documents** at `data/sample/corpus.jsonl` and **10 labeled queries** at `data/sample/queries.json`. This is a learning/evaluation starter set, not a representative enterprise dataset.
 
 With the default `--k 10`, the printed report includes **Recall@10** (shown as `recall@10`), Precision@10, MRR, nDCG@10, and p50/p95 latency. These are metric names, not a published real-model result.
 
