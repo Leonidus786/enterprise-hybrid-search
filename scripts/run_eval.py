@@ -28,6 +28,7 @@ from hs.compare import check_consistency  # noqa: E402
 from hs.evaluate import evaluate_with_details  # noqa: E402
 from hs.io import load_chunks, load_queries  # noqa: E402
 from hs.pipeline import HybridPipeline  # noqa: E402
+from hs.provenance import build_run_provenance  # noqa: E402
 
 
 BGE_PREFIX = "Represent this sentence for searching relevant passages: "
@@ -64,6 +65,14 @@ def build_parser():
         help="Words of overlap between chunks (default: 40)",
     )
     parser.add_argument("--fake", action="store_true", help="Use fake models for an offline smoke test")
+    parser.add_argument(
+        "--embedding-revision", default=None,
+        help="Optional Hugging Face revision/commit for the embedding model",
+    )
+    parser.add_argument(
+        "--reranker-revision", default=None,
+        help="Optional Hugging Face revision/commit for the cross-encoder model",
+    )
     parser.add_argument("--no-bge-prefix", action="store_true", help="Disable the BGE query instruction")
     parser.add_argument(
         "--cache-dir", default=".cache/embeddings",
@@ -133,6 +142,9 @@ def _query_fingerprint(queries):
         if grades is not None:
             row["grades"] = grades
         canonical.append(row)
+    # Query order is not part of logical query/qrels identity. Sorting rows by
+    # unique query ID makes the fingerprint stable when the same set is reordered.
+    canonical.sort(key=lambda row: row["id"])
     payload = json.dumps(
         canonical, sort_keys=True, ensure_ascii=False, separators=(",", ":")
     ).encode("utf-8")
@@ -141,9 +153,9 @@ def _query_fingerprint(queries):
 
 def save_results_json(
     path, results, args, chunks, total_queries, evaluated_queries,
-    per_query=None, query_fingerprint=None,
+    per_query=None, query_fingerprint=None, model_metadata=None,
 ):
-    """Save a reproducible benchmark artifact, including per-query scores."""
+    """Save metrics, ranking traces, and a verifiable provenance envelope."""
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -154,9 +166,51 @@ def save_results_json(
         if consistency_issues:
             raise ValueError("aggregate/per-query metrics are inconsistent: " + " | ".join(consistency_issues))
 
+    config = {
+        "strategies": args.strategies,
+        "k": args.k,
+        "retrieval_k": args.retrieval_k,
+        "candidate_k": args.candidate_k,
+        "level": args.level,
+        "chunking": {
+            "enabled": not args.no_chunk,
+            "size": None if args.no_chunk else args.chunk_size,
+            "overlap": args.chunk_overlap,
+        },
+        "fake_models": args.fake,
+        "embedding_model": "fake-word-hash-128-v1" if args.fake else "BAAI/bge-small-en-v1.5",
+        "reranker_model": None if args.fake else "cross-encoder/ms-marco-MiniLM-L-6-v2",
+        "embedding_revision_requested": getattr(args, "embedding_revision", None),
+        "reranker_revision_requested": getattr(args, "reranker_revision", None),
+        "cache_enabled": not args.no_cache,
+        "cache_dir": None if args.no_cache else str(Path(getattr(args, "cache_dir", ".cache/embeddings"))),
+        "bge_prefix_enabled": not (args.fake or args.no_bge_prefix),
+        "query_text_included": bool(getattr(args, "include_query_text", False)),
+    }
+    dataset = {
+        "corpus_path": str(Path(args.corpus)),
+        "queries_path": str(Path(args.queries)),
+        "searchable_items": len(chunks),
+        "unique_documents": len({chunk.doc_id for chunk in chunks}),
+        "total_queries": total_queries,
+        "evaluated_queries": evaluated_queries,
+        "query_fingerprint": query_fingerprint,
+    }
+    repo_root = Path(__file__).resolve().parent.parent
+    provenance = build_run_provenance(
+        repo_root=repo_root,
+        corpus_path=args.corpus,
+        queries_path=args.queries,
+        run_config=config,
+        query_fingerprint=query_fingerprint,
+        model_metadata=model_metadata,
+    )
+    dataset["corpus_sha256"] = provenance["inputs"]["corpus"]["sha256"]
+    dataset["queries_file_sha256"] = provenance["inputs"]["queries_and_relevance_labels"]["sha256"]
+
     document = {
-        # Schema 2 introduces query-wise scores required by compare_runs.py.
-        "schema_version": 2 if has_per_query else 1,
+        # Schema 4 adds data/model/source/runtime provenance to schema 3 traces.
+        "schema_version": 4,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "git": _git_info(),
         "environment": {
@@ -164,37 +218,12 @@ def save_results_json(
             "platform": platform.platform(),
             "numpy": np.__version__,
         },
-        "config": {
-            "strategies": args.strategies,
-            "k": args.k,
-            "retrieval_k": args.retrieval_k,
-            "candidate_k": args.candidate_k,
-            "level": args.level,
-            "chunking": {
-                "enabled": not args.no_chunk,
-                "size": None if args.no_chunk else args.chunk_size,
-                "overlap": args.chunk_overlap,
-            },
-            "fake_models": args.fake,
-            "embedding_model": "fake-word-hash-128-v1" if args.fake else "BAAI/bge-small-en-v1.5",
-            "reranker_model": None if args.fake else "cross-encoder/ms-marco-MiniLM-L-6-v2",
-            "cache_enabled": not args.no_cache,
-            "bge_prefix_enabled": not (args.fake or args.no_bge_prefix),
-            "query_text_included": bool(getattr(args, "include_query_text", False)),
-        },
-        "dataset": {
-            "corpus_path": str(Path(args.corpus)),
-            "queries_path": str(Path(args.queries)),
-            "searchable_items": len(chunks),
-            "unique_documents": len({chunk.doc_id for chunk in chunks}),
-            "total_queries": total_queries,
-            "evaluated_queries": evaluated_queries,
-            "query_fingerprint": query_fingerprint,
-        },
+        "config": config,
+        "dataset": dataset,
+        "provenance": provenance,
         "metrics": results,
     }
     if has_per_query:
-        document["schema_version"] = 3
         document["ranking_trace"] = {
             "schema_version": 1,
             "ranked_ids_key": "per_query.<strategy>.<query_id>._trace.ranked_ids",
@@ -229,11 +258,39 @@ def main(argv=None):
     if args.fake:
         embed, score = _fakes()
         embedding_model_id = "fake-word-hash-128-v1"
+        model_metadata = {
+            "embedding": {
+                "model_id": embedding_model_id,
+                "requested_revision": None,
+                "resolved_revision": "fake-word-hash-128-v1",
+                "revision_status": "not_applicable_fake_model",
+            },
+            "reranker": {
+                "model_id": "fake-token-overlap-scorer-v1",
+                "requested_revision": None,
+                "resolved_revision": "fake-token-overlap-scorer-v1",
+                "revision_status": "not_applicable_fake_model",
+            },
+        }
     else:
         from hs.models import cross_encoder_scorer, sentence_embedder
-        embed = sentence_embedder()
-        score = cross_encoder_scorer()
+        embed = sentence_embedder(revision=args.embedding_revision)
+        score = cross_encoder_scorer(revision=args.reranker_revision)
         embedding_model_id = "BAAI/bge-small-en-v1.5"
+        model_metadata = {
+            "embedding": getattr(embed, "model_metadata", {
+                "model_id": embedding_model_id,
+                "requested_revision": args.embedding_revision,
+                "resolved_revision": None,
+                "revision_status": "unknown_model_loader_metadata_unavailable",
+            }),
+            "reranker": getattr(score, "model_metadata", {
+                "model_id": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+                "requested_revision": args.reranker_revision,
+                "resolved_revision": None,
+                "revision_status": "unknown_model_loader_metadata_unavailable",
+            }),
+        }
 
     if not args.no_cache:
         embed = CachedEmbedder(
@@ -277,6 +334,7 @@ def main(argv=None):
         save_results_json(
             args.output, results, args, chunks, total_queries, len(queries),
             per_query=per_query, query_fingerprint=_query_fingerprint(queries),
+            model_metadata=model_metadata,
         )
     if not results:
         raise RuntimeError("Evaluation returned no results.")

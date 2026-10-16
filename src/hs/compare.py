@@ -68,30 +68,115 @@ def check_consistency(results, atol=1e-9):
 
 
 def _protocol_mismatches(a, b, metric):
-    """Compare only protocol fields that are explicitly present in both files."""
+    """Return protocol mismatches, failing closed for provenance schema v4+.
+
+    Legacy result files retain the original best-effort comparison behaviour.
+    Schema v4 is intended for auditable benchmark claims, so required fields
+    cannot silently disappear from one side (or both sides).
+    """
     mismatches = []
+    schema_a = a.get("schema_version")
+    schema_b = b.get("schema_version")
+    versioned = schema_a is not None or schema_b is not None
+    if versioned and schema_a != schema_b:
+        mismatches.append(f"schema_version: {schema_a!r} != {schema_b!r}")
+    strict_v4 = schema_a == schema_b and isinstance(schema_a, int) and not isinstance(schema_a, bool) and schema_a >= 4
+
     da, db = a.get("dataset", {}), b.get("dataset", {})
     dataset_keys = ("searchable_items", "unique_documents", "total_queries", "evaluated_queries")
+    if strict_v4:
+        dataset_keys = dataset_keys + ("corpus_sha256", "queries_file_sha256", "query_fingerprint")
     for key in dataset_keys:
-        if key in da and key in db and da[key] != db[key]:
+        present_a, present_b = key in da, key in db
+        if strict_v4 and (not present_a or not present_b):
+            mismatches.append(f"dataset.{key}: required field missing from {'A' if not present_a else 'B'}")
+        elif present_a != present_b:
+            mismatches.append(f"dataset.{key}: missing from one run")
+        elif present_a and strict_v4 and key in ("corpus_sha256", "queries_file_sha256", "query_fingerprint") and not (da[key] and db[key]):
+            mismatches.append(f"dataset.{key}: unavailable in one or both schema-v4 runs")
+        elif present_a and key != "queries_file_sha256" and da[key] != db[key]:
+            # Raw query file hashes are retained for provenance, but logical
+            # equivalence is checked through the canonical query fingerprint.
             mismatches.append(f"dataset.{key}: {da[key]!r} != {db[key]!r}")
-    # A query fingerprint is the strongest available check that query text and
-    # relevance labels match. If only one run has it, do not silently compare.
-    if ("query_fingerprint" in da) != ("query_fingerprint" in db):
-        mismatches.append("dataset.query_fingerprint: missing from one run")
-    elif "query_fingerprint" in da and da["query_fingerprint"] != db["query_fingerprint"]:
-        mismatches.append(
-            f"dataset.query_fingerprint: {da['query_fingerprint']!r} != {db['query_fingerprint']!r}"
-        )
+
+    # In legacy files, fingerprints are optional but must appear on both sides
+    # if either run supplies one. In v4 they are mandatory (above).
+    if not strict_v4:
+        if ("query_fingerprint" in da) != ("query_fingerprint" in db):
+            mismatches.append("dataset.query_fingerprint: missing from one run")
+        elif "query_fingerprint" in da and da["query_fingerprint"] != db["query_fingerprint"]:
+            mismatches.append(
+                f"dataset.query_fingerprint: {da['query_fingerprint']!r} != {db['query_fingerprint']!r}"
+            )
 
     ca, cb = a.get("config", {}), b.get("config", {})
+    config_keys = [
+        "k", "retrieval_k", "candidate_k", "level", "chunking", "fake_models",
+        "embedding_model", "reranker_model", "bge_prefix_enabled",
+        "embedding_revision_requested", "reranker_revision_requested",
+    ]
+    if "latency" in metric.lower():
+        config_keys.append("cache_enabled")
     if isinstance(ca, dict) and isinstance(cb, dict):
-        keys = ["k", "retrieval_k", "candidate_k", "level", "chunking", "fake_models", "embedding_model", "reranker_model", "bge_prefix_enabled"]
-        if "latency" in metric.lower():
-            keys.append("cache_enabled")
-        for key in keys:
-            if key in ca and key in cb and ca[key] != cb[key]:
+        for key in config_keys:
+            present_a, present_b = key in ca, key in cb
+            if strict_v4 and (not present_a or not present_b):
+                mismatches.append(f"config.{key}: required field missing from {'A' if not present_a else 'B'}")
+            elif present_a != present_b:
+                mismatches.append(f"config.{key}: missing from one run")
+            elif present_a and ca[key] != cb[key]:
                 mismatches.append(f"config.{key}: {ca[key]!r} != {cb[key]!r}")
+
+    if strict_v4:
+        pa, pb = a.get("provenance"), b.get("provenance")
+        if not isinstance(pa, dict) or not isinstance(pb, dict):
+            mismatches.append("provenance: required object missing from one or both runs")
+        else:
+            source_a = pa.get("source_code", {})
+            source_b = pb.get("source_code", {})
+            hash_a = source_a.get("sha256") if isinstance(source_a, dict) else None
+            hash_b = source_b.get("sha256") if isinstance(source_b, dict) else None
+            if not hash_a or not hash_b:
+                mismatches.append("provenance.source_code.sha256: unavailable in one or both runs")
+            elif hash_a != hash_b:
+                mismatches.append("provenance.source_code.sha256: source code differs between runs")
+
+            models_a = pa.get("models")
+            models_b = pb.get("models")
+            if not isinstance(models_a, dict) or not isinstance(models_b, dict):
+                mismatches.append("provenance.models: required model metadata missing")
+            else:
+                for component in ("embedding", "reranker"):
+                    ma, mb = models_a.get(component), models_b.get(component)
+                    if not isinstance(ma, dict) or not isinstance(mb, dict):
+                        mismatches.append(f"provenance.models.{component}: required metadata missing")
+                        continue
+                    for field in ("model_id", "resolved_revision", "revision_status"):
+                        va, vb = ma.get(field), mb.get(field)
+                        if field not in ma or field not in mb:
+                            mismatches.append(f"provenance.models.{component}.{field}: required field missing")
+                        elif va != vb:
+                            mismatches.append(f"provenance.models.{component}.{field}: {va!r} != {vb!r}")
+                    # Unknown revisions can be acceptable within one saved run
+                    # (mode-vs-mode), but cannot establish identity across files.
+                    if a is not b and not (ma.get("resolved_revision") and mb.get("resolved_revision")):
+                        mismatches.append(
+                            f"provenance.models.{component}.resolved_revision: unresolved across separate runs"
+                        )
+
+        if "latency" in metric.lower():
+            runtime_a = pa.get("runtime") if isinstance(pa, dict) else None
+            runtime_b = pb.get("runtime") if isinstance(pb, dict) else None
+            if not isinstance(runtime_a, dict) or not isinstance(runtime_b, dict):
+                mismatches.append("provenance.runtime: required runtime metadata missing for latency comparison")
+            else:
+                for field in ("python", "platform", "machine", "processor", "cpu_count_logical", "packages"):
+                    va, vb = runtime_a.get(field), runtime_b.get(field)
+                    if field not in runtime_a or field not in runtime_b:
+                        mismatches.append(f"provenance.runtime.{field}: required field missing for latency comparison")
+                    elif va != vb:
+                        mismatches.append(f"provenance.runtime.{field}: runtime differs between runs")
+
     if mismatches:
         return ["protocol mismatch: " + "; ".join(mismatches)]
     return []
