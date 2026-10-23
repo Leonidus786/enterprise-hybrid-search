@@ -81,7 +81,7 @@ def _git_call(root: Path, *args: str) -> str | None:
         return None
     if completed.returncode != 0:
         return None
-    return completed.stdout.strip()
+    return completed.stdout.rstrip("\r\n")
 
 
 def capture_git_state(repo_root: str | Path) -> dict[str, Any]:
@@ -89,20 +89,49 @@ def capture_git_state(repo_root: str | Path) -> dict[str, Any]:
     root = Path(repo_root).resolve()
     commit = _git_call(root, "rev-parse", "HEAD")
     branch = _git_call(root, "rev-parse", "--abbrev-ref", "HEAD")
-    status = _git_call(root, "status", "--porcelain", "--untracked-files=all")
+    status = _git_call(
+        root,
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+    )
+
     if status is None:
         dirty = None
         changed_files = None
     else:
-        lines = [line for line in status.splitlines() if line.strip()]
-        dirty = bool(lines)
+        records = status.split("\0")
+        if records and records[-1] == "":
+            records.pop()
+
+        dirty = bool(records)
         changed_files = []
-        for line in lines:
-            # Keep the file path only; status columns are the first 3 chars.
-            file_part = line[3:].strip()
-            if " -> " in file_part:
-                file_part = file_part.split(" -> ", 1)[1]
-            changed_files.append(file_part.strip('"'))
+        index = 0
+
+        while index < len(records):
+            record = records[index]
+            index += 1
+
+            # Porcelain v1 records contain two status characters,
+            # one separator, and the path. Do not strip the path:
+            # leading spaces can be part of a legitimate filename.
+            if len(record) < 4 or record[2] != " ":
+                dirty = None
+                changed_files = None
+                break
+
+            status_code = record[:2]
+            file_path = record[3:]
+            changed_files.append(file_path)
+
+            # With -z, rename/copy records contain the destination
+            # first and the source in the following NUL-delimited field.
+            if (
+                "R" in status_code or "C" in status_code
+            ) and index < len(records):
+                index += 1
+
     return {
         "commit": commit,
         "branch": branch,
