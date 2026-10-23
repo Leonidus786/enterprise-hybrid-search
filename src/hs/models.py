@@ -3,7 +3,7 @@
 Model loading remains lazy so unit tests do not require torch or HF downloads.
 """
 from __future__ import annotations
-
+from pathlib import Path
 import re
 from typing import Any
 
@@ -44,21 +44,96 @@ def _extract_resolved_revision(model: Any) -> str | None:
             return commit
     for tokenizer in tokenizers:
         init_kwargs = getattr(tokenizer, "init_kwargs", {}) or {}
-        commit = init_kwargs.get("_commit_hash") if isinstance(init_kwargs, dict) else None
+        commit = init_kwargs.get("_commit_hash") if isinstance(
+            init_kwargs, dict) else None
         if isinstance(commit, str) and _COMMIT_RE.fullmatch(commit):
             return commit
     return None
 
 
-def _attach_metadata(function, *, model_id: str, requested_revision: str | None, model: Any):
-    resolved_revision = _extract_resolved_revision(model)
-    if resolved_revision is None and isinstance(requested_revision, str) and _COMMIT_RE.fullmatch(requested_revision):
-        resolved_revision = requested_revision
+def _attach_metadata(
+    function,
+    *,
+    model_id: str,
+    requested_revision: str | None,
+    model: Any,
+):
+    loaded_revision = _extract_resolved_revision(model)
+
+    requested_pinned = (
+        isinstance(requested_revision, str)
+        and _COMMIT_RE.fullmatch(requested_revision) is not None
+    )
+
+    verified_from_local_snapshot = False
+
+    if loaded_revision is not None:
+        resolved_revision = loaded_revision
+
+        if requested_pinned:
+            verified_from_loaded_model = (
+                loaded_revision.lower() == requested_revision.lower()
+            )
+            revision_status = (
+                "verified_commit_match"
+                if verified_from_loaded_model
+                else "revision_mismatch"
+            )
+        else:
+            verified_from_loaded_model = True
+            revision_status = "loaded_model_revision_exposed"
+
+    elif requested_pinned:
+        # Fallback: verify the cached snapshot directory without network access.
+        try:
+            from huggingface_hub import snapshot_download
+
+            snapshot_path = snapshot_download(
+                repo_id=model_id,
+                revision=requested_revision,
+                local_files_only=True,
+            )
+            snapshot_revision = Path(snapshot_path).name
+        except Exception:
+            snapshot_revision = None
+
+        if (
+            isinstance(snapshot_revision, str)
+            and _COMMIT_RE.fullmatch(snapshot_revision)
+        ):
+            resolved_revision = snapshot_revision
+            verified_from_local_snapshot = (
+                snapshot_revision.lower() == requested_revision.lower()
+            )
+            verified_from_loaded_model = False
+            revision_status = (
+                "verified_cached_snapshot_match"
+                if verified_from_local_snapshot
+                else "cached_snapshot_revision_mismatch"
+            )
+        else:
+            resolved_revision = None
+            verified_from_loaded_model = False
+            revision_status = "requested_commit_unverified"
+
+    else:
+        resolved_revision = None
+        verified_from_loaded_model = False
+        revision_status = "unknown_not_exposed_by_loader"
+
+    revision_verified = (
+        verified_from_loaded_model or verified_from_local_snapshot
+    )
+
     function.model_metadata = {
         "model_id": model_id,
         "requested_revision": requested_revision,
+        "requested_pinned": requested_pinned,
         "resolved_revision": resolved_revision,
-        "revision_status": "resolved_commit" if resolved_revision else "unknown_not_exposed_by_loader",
+        "verified_from_loaded_model": verified_from_loaded_model,
+        "verified_from_local_snapshot": verified_from_local_snapshot,
+        "revision_verified": revision_verified,
+        "revision_status": revision_status,
     }
     return function
 
@@ -66,7 +141,8 @@ def _attach_metadata(function, *, model_id: str, requested_revision: str | None,
 def sentence_embedder(name="BAAI/bge-small-en-v1.5", revision=None):
     from sentence_transformers import SentenceTransformer
 
-    model = SentenceTransformer(name, **({"revision": revision} if revision else {}))
+    model = SentenceTransformer(
+        name, **({"revision": revision} if revision else {}))
 
     def embed(texts):
         return model.encode(

@@ -70,7 +70,8 @@ def _evaluate(
     for query_item in queries:
         relevant = query_item.get("relevant")
         if not relevant:
-            raise ValueError(f"query {query_item.get('id')} has no relevance labels")
+            raise ValueError(
+                f"query {query_item.get('id')} has no relevance labels")
         missing = set(relevant) - known
         if missing:
             raise ValueError(
@@ -80,7 +81,8 @@ def _evaluate(
         if collect_per_query:
             qid = query_item.get("id")
             if not isinstance(qid, str) or not qid.strip():
-                raise ValueError("per-query output requires each query to have a non-empty string id")
+                raise ValueError(
+                    "per-query output requires each query to have a non-empty string id")
             if qid in seen_query_ids:
                 raise ValueError(f"duplicate query id {qid!r}")
             seen_query_ids.add(qid)
@@ -100,6 +102,7 @@ def _evaluate(
             f"recall@{retrieval_k}": 0.0,
             f"candidate_recall@{candidate_k}": 0.0,
             "mrr": 0.0,
+            f"mrr@{k}": 0.0,
             f"ndcg@{k}": 0.0,
         }
         total_latencies = []
@@ -114,10 +117,12 @@ def _evaluate(
             total_latencies.append(total_ms)
 
             component_times = getattr(pipeline, "last_timing_ms", {})
-            retrieval_latencies.append(float(component_times.get("retrieval", 0.0)))
+            retrieval_latencies.append(
+                float(component_times.get("retrieval", 0.0)))
             rerank_latencies.append(float(component_times.get("rerank", 0.0)))
 
-            candidates = _candidate_results(pipeline, ranked, level, candidate_k)
+            candidates = _candidate_results(
+                pipeline, ranked, level, candidate_k)
             scores = _score_one_ranking(
                 ranked,
                 query_item,
@@ -160,7 +165,8 @@ def _evaluate(
                 }
 
         count = len(queries)
-        result = {metric_name: total / count for metric_name, total in totals.items()}
+        result = {metric_name: total /
+                  count for metric_name, total in totals.items()}
         result.update({
             "latency_p50_ms": percentile(total_latencies, 50),
             "latency_p95_ms": percentile(total_latencies, 95),

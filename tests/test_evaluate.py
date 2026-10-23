@@ -26,6 +26,7 @@ def test_evaluate_returns_metrics_per_mode(embed, score):
         "recall@100",
         "candidate_recall@50",
         "mrr",
+        "mrr@3",
         "ndcg@3",
         "latency_p50_ms",
         "latency_p95_ms",

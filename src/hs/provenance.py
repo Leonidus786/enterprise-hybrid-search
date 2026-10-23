@@ -15,7 +15,8 @@ from pathlib import Path
 from typing import Any
 
 _HASH_BLOCK_SIZE = 1024 * 1024
-_SOURCE_GLOBS = ("src/hs/*.py", "scripts/run_eval.py", "scripts/compare_runs.py", "pyproject.toml", "uv.lock", "requirements.txt")
+_SOURCE_GLOBS = ("src/hs/*.py", "scripts/run_eval.py",
+                 "scripts/compare_runs.py", "pyproject.toml", "uv.lock", "requirements.txt")
 _RUNTIME_PACKAGES = (
     "numpy",
     "sentence-transformers",
@@ -46,7 +47,8 @@ def sha256_json(value: Any) -> str:
 def _display_path(path: str | Path, root: Path) -> str:
     """Prefer repository-relative paths; avoid leaking unrelated absolute paths."""
     original = Path(path)
-    resolved = original.resolve() if original.is_absolute() else (root.resolve() / original).resolve()
+    resolved = original.resolve() if original.is_absolute() else (
+        root.resolve() / original).resolve()
     try:
         return resolved.relative_to(root.resolve()).as_posix()
     except ValueError:
@@ -59,7 +61,8 @@ def describe_file(path: str | Path, root: str | Path) -> dict[str, Any]:
     """Describe an input file. Missing files are explicit and non-fatal."""
     root_path = Path(root).resolve()
     candidate = Path(path)
-    resolved = candidate.resolve() if candidate.is_absolute() else (root_path / candidate).resolve()
+    resolved = candidate.resolve() if candidate.is_absolute() else (
+        root_path / candidate).resolve()
     exists = resolved.is_file()
     result: dict[str, Any] = {
         "path": _display_path(path, root_path),
@@ -146,7 +149,8 @@ def capture_source_hashes(repo_root: str | Path) -> dict[str, Any]:
     root = Path(repo_root).resolve()
     candidates: set[Path] = set()
     for pattern in _SOURCE_GLOBS:
-        candidates.update(path for path in root.glob(pattern) if path.is_file())
+        candidates.update(path for path in root.glob(
+            pattern) if path.is_file())
     hashes = {
         path.relative_to(root).as_posix(): sha256_file(path)
         for path in sorted(candidates)
@@ -210,11 +214,24 @@ def build_run_provenance(
     # Fake model labels are identifiers for deterministic smoke-test functions,
     # not loaded model commits. Never report them as resolved model revisions.
     fake_models = bool(run_config.get("fake_models"))
-    known_model_revisions = (not fake_models) and bool(model_entries) and all(
-        isinstance(entry, dict) and bool(entry.get("resolved_revision"))
-        for entry in model_entries
+    known_model_revisions = (
+        not fake_models
+        and bool(model_entries)
+        and all(
+            isinstance(entry, dict)
+            and bool(entry.get("resolved_revision"))
+            and (
+                entry.get("revision_verified") is True
+                or (
+                    "revision_verified" not in entry
+                    and entry.get("verified_from_loaded_model") is True
+                )
+            )
+            for entry in model_entries
+        )
     )
-    input_hashes_available = bool(corpus["sha256"] and query_file["sha256"] and query_fingerprint)
+    input_hashes_available = bool(
+        corpus["sha256"] and query_file["sha256"] and query_fingerprint)
 
     core_provenance_available = bool(
         input_hashes_available

@@ -61,13 +61,16 @@ def _score_one_ranking(
     else:
         ndcg = ndcg_at_k(top_k, relevant, k)
 
+
+    mrr_score = reciprocal_rank(top_k, relevant)
     scores = {
         f"precision@{k}": precision_at_k(top_k, relevant, k),
         f"recall@{k}": recall_at_k(top_k, relevant, k),
         f"recall@{retrieval_k}": recall_at_k(
             list(ranking[:retrieval_k]), relevant, retrieval_k
         ),
-        "mrr": reciprocal_rank(top_k, relevant),
+        "mrr": mrr_score,
+        f"mrr@{k}": mrr_score,
         f"ndcg@{k}": ndcg,
     }
 

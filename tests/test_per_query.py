@@ -49,7 +49,8 @@ def test_retrieval_depth_truncates_recall():
 
 def test_exact_key_set():
     out = score_rankings({"q1": ["a"], "q2": ["c"]}, QUERIES, k=2, retrieval_k=5)["q1"]
-    assert set(out) == {"precision@2", "recall@2", "recall@5", "mrr", "ndcg@2"}
+    assert set(out) == {"precision@2", "recall@2",
+                        "recall@5", "mrr", "mrr@2", "ndcg@2"}
 
 
 def test_missing_ranking_names_the_query():

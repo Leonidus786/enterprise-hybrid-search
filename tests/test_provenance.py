@@ -51,14 +51,27 @@ def test_missing_input_is_explicit_not_fabricated(tmp_path):
 def test_provenance_captures_inputs_models_source_and_runtime(tmp_path):
     root = tmp_path / "repo"
     _write(root / "data/corpus.jsonl", '{"id":"d1"}\n')
-    _write(root / "data/queries.json", json.dumps([{"id":"q1", "query":"test", "relevant":["d1"]}]))
+    _write(root / "data/queries.json",
+           json.dumps([{"id": "q1", "query": "test", "relevant": ["d1"]}]))
     _write(root / "src/hs/evaluate.py", "# evaluator v1\n")
     _write(root / "scripts/run_eval.py", "# runner v1\n")
     _write(root / "pyproject.toml", "[project]\nname='test'\n")
     query_fp = sha256_json([{"id": "q1", "query": "test", "relevant": ["d1"]}])
     models = {
-        "embedding": {"model_id": "embed", "resolved_revision": "a" * 40},
-        "reranker": {"model_id": "rerank", "resolved_revision": "b" * 40},
+        "embedding": {
+            "model_id": "embed",
+            "resolved_revision": "a" * 40,
+            "verified_from_loaded_model": False,
+            "verified_from_local_snapshot": True,
+            "revision_verified": True,
+        },
+        "reranker": {
+            "model_id": "rerank",
+            "resolved_revision": "b" * 40,
+            "verified_from_loaded_model": True,
+            "verified_from_local_snapshot": False,
+            "revision_verified": True,
+        },
     }
 
     result = build_run_provenance(
@@ -72,7 +85,8 @@ def test_provenance_captures_inputs_models_source_and_runtime(tmp_path):
 
     assert result["schema_version"] == 1
     assert len(result["inputs"]["corpus"]["sha256"]) == 64
-    assert len(result["inputs"]["queries_and_relevance_labels"]["sha256"]) == 64
+    assert len(result["inputs"]
+               ["queries_and_relevance_labels"]["sha256"]) == 64
     assert result["inputs"]["query_relevance_fingerprint"] == query_fp
     assert result["source_code"]["file_count"] >= 3
     assert len(result["config_fingerprint_sha256"]) == 64
@@ -122,7 +136,8 @@ def test_save_results_json_adds_schema_v4_provenance(tmp_path):
 
     root = Path(__file__).resolve().parents[1]
     script = root / "scripts" / "run_eval.py"
-    spec = importlib.util.spec_from_file_location("provenance_run_eval", script)
+    spec = importlib.util.spec_from_file_location(
+        "provenance_run_eval", script)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
 
@@ -184,7 +199,8 @@ def test_model_loaders_forward_requested_revision_and_record_resolved_commit(mon
     class DummyCrossEncoder:
         def __init__(self, model_id, **kwargs):
             captured["reranker"] = (model_id, kwargs)
-            self.model = SimpleNamespace(config=SimpleNamespace(_commit_hash=reranker_commit))
+            self.model = SimpleNamespace(
+                config=SimpleNamespace(_commit_hash=reranker_commit))
 
         def predict(self, pairs):
             return []
@@ -198,7 +214,8 @@ def test_model_loaders_forward_requested_revision_and_record_resolved_commit(mon
     rerank = cross_encoder_scorer("test/reranker", revision="release-tag")
 
     assert captured["embedding"] == ("test/embed", {"revision": "main"})
-    assert captured["reranker"] == ("test/reranker", {"revision": "release-tag"})
+    assert captured["reranker"] == (
+        "test/reranker", {"revision": "release-tag"})
     assert embed.model_metadata["requested_revision"] == "main"
     assert embed.model_metadata["resolved_revision"] == embedding_commit
     assert rerank.model_metadata["requested_revision"] == "release-tag"
@@ -208,7 +225,8 @@ def test_model_loaders_forward_requested_revision_and_record_resolved_commit(mon
 def test_fake_models_are_never_reported_as_resolved_model_revisions(tmp_path):
     root = tmp_path / "repo"
     _write(root / "corpus.jsonl", '{"id":"d1"}\n')
-    _write(root / "queries.json", '[{"id":"q1","query":"test","relevant":["d1"]}]')
+    _write(root / "queries.json",
+           '[{"id":"q1","query":"test","relevant":["d1"]}]')
     _write(root / "src/hs/evaluate.py", "# evaluator\n")
     _write(root / "scripts/run_eval.py", "# runner\n")
     result = build_run_provenance(
@@ -231,11 +249,13 @@ def test_query_fingerprint_is_independent_of_query_file_order():
 
     root = Path(__file__).resolve().parents[1]
     script = root / "scripts" / "run_eval.py"
-    spec = importlib.util.spec_from_file_location("query_fingerprint_test_run_eval", script)
+    spec = importlib.util.spec_from_file_location(
+        "query_fingerprint_test_run_eval", script)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     queries = [
         {"id": "q2", "query": "second query", "relevant": ["d2", "d1"]},
         {"id": "q1", "query": "first query", "relevant": ["d3"]},
     ]
-    assert module._query_fingerprint(queries) == module._query_fingerprint(list(reversed(queries)))
+    assert module._query_fingerprint(
+        queries) == module._query_fingerprint(list(reversed(queries)))
