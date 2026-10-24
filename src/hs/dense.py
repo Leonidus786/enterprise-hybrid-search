@@ -8,9 +8,10 @@ def _normalize(m):
 class DenseIndex:
     """Exact cosine search. embed_fn: list[str] -> ndarray (n, dim).
     query_prefix: prepended to queries only (e.g. BGE's retrieval instruction)."""
-    def __init__(self, chunks, embed_fn, query_prefix=""):
+    def __init__(self, chunks, embed_fn, query_prefix="", query_embed_fn=None):
         self.chunks = list(chunks)
         self.embed_fn = embed_fn
+        self.query_embed_fn = embed_fn if query_embed_fn is None else query_embed_fn
         self.query_prefix = query_prefix
         self.matrix = None
         if self.chunks:  # some embedders return a 1-D empty array for [] input
@@ -25,7 +26,7 @@ class DenseIndex:
         positive_int("k", k)
         if self.matrix is None:
             return []
-        q = np.asarray(self.embed_fn([self.query_prefix + query]), dtype=np.float32)
+        q = np.asarray(self.query_embed_fn([self.query_prefix + query]), dtype=np.float32)
         if q.shape != (1, self.matrix.shape[1]):
             raise ValueError(f"query embedding shape {q.shape} != (1, {self.matrix.shape[1]})")
         if not np.isfinite(q).all():

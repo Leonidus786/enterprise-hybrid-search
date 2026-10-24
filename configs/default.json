@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "purpose": "Declared defaults. tests/test_configs.py fails if these drift from code.",
+  "parser_defaults": {
+    "k": 10,
+    "retrieval_k": 100,
+    "candidate_k": 50,
+    "level": "doc",
+    "chunk_size": 200,
+    "chunk_overlap": 40
+  },
+  "canonical_protocol": {
+    "dataset": "BEIR SciFact test",
+    "no_chunk": true,
+    "level": "doc",
+    "no_cache": true
+  },
+  "strategies": [
+    "bm25",
+    "dense",
+    "hybrid",
+    "hybrid_rerank"
+  ],
+  "sparse": {
+    "bm25_k1": 1.5,
+    "bm25_b": 0.75
+  },
+  "fusion": {
+    "method": "rrf",
+    "rrf_k": 60
+  },
+  "models": {
+    "embedding": {
+      "id": "BAAI/bge-small-en-v1.5",
+      "revision": "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a",
+      "normalize": true,
+      "batch_size": 64,
+      "query_prefix": "Represent this sentence for searching relevant passages: "
+    },
+    "reranker": {
+      "id": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+      "revision": "233902d25c440f23af6f7d6e94d2946bac0bee0a"
+    }
+  }
+}

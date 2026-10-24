@@ -19,6 +19,7 @@ class HybridPipeline:
         candidate_k=50,
         rrf_k=60,
         query_prefix="",
+        query_embed_fn=None,
     ):
         positive_int("candidate_k", candidate_k)
         positive_int("rrf_k", rrf_k)
@@ -36,6 +37,7 @@ class HybridPipeline:
             self.chunks,
             embed_fn,
             query_prefix=query_prefix,
+            query_embed_fn=query_embed_fn,
         )
 
         self.reranker = Reranker(score_fn) if score_fn else None

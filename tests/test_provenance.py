@@ -259,3 +259,14 @@ def test_query_fingerprint_is_independent_of_query_file_order():
     ]
     assert module._query_fingerprint(
         queries) == module._query_fingerprint(list(reversed(queries)))
+
+
+def test_source_hashes_include_latency_runner():
+    from pathlib import Path
+
+    from hs.provenance import capture_source_hashes
+
+    root = Path(__file__).resolve().parents[1]
+    result = capture_source_hashes(root)
+
+    assert "scripts/run_latency.py" in result["files"]

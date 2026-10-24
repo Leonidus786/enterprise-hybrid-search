@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "metrics": [
+    "ndcg@10",
+    "recall@100"
+  ],
+  "pairs": [
+    ["bm25", "dense"],
+    ["dense", "hybrid"],
+    ["hybrid", "hybrid_rerank"]
+  ],
+  "hypotheses": 6,
+  "resamples": 10000,
+  "seed": 42,
+  "correction": "bonferroni",
+  "descriptive_only": [
+    "mrr@10"
+  ],
+  "note": "Declared before the final run; hybrid-vs-dense data was previously inspected. Not pre-registered."
+}

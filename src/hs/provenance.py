@@ -15,8 +15,15 @@ from pathlib import Path
 from typing import Any
 
 _HASH_BLOCK_SIZE = 1024 * 1024
-_SOURCE_GLOBS = ("src/hs/*.py", "scripts/run_eval.py",
-                 "scripts/compare_runs.py", "pyproject.toml", "uv.lock", "requirements.txt")
+_SOURCE_GLOBS = (
+    "src/hs/*.py",
+    "scripts/run_eval.py",
+    "scripts/run_latency.py",
+    "scripts/compare_runs.py",
+    "pyproject.toml",
+    "uv.lock",
+    "requirements.txt",
+)
 _RUNTIME_PACKAGES = (
     "numpy",
     "sentence-transformers",
