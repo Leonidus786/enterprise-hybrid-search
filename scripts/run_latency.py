@@ -44,16 +44,29 @@ def validate_trials(trials: int) -> None:
 
 
 def require_verified_models(model_metadata):
-    """Refuse a latency run unless every model revision was verified from the loaded model."""
+    """Require verified, pinned model revisions before benchmarking."""
+    if not isinstance(model_metadata, dict) or not model_metadata:
+        raise RuntimeError("model metadata missing; refusing latency run")
+
     for name, metadata in model_metadata.items():
+        if not isinstance(metadata, dict):
+            raise RuntimeError(
+                f"{name} model metadata missing; refusing latency run: {metadata}"
+            )
+
+        requested = metadata.get("requested_revision")
+        resolved = metadata.get("resolved_revision")
+
         if (
-            not isinstance(metadata, dict)
-            or metadata.get("verified_from_loaded_model") is not True
-            or str(metadata.get("resolved_revision", "")).lower()
-            != str(metadata.get("requested_revision", "")).lower()
+            metadata.get("revision_verified") is not True
+            or not isinstance(requested, str)
+            or not requested
+            or not isinstance(resolved, str)
+            or resolved.lower() != requested.lower()
         ):
             raise RuntimeError(
-                f"{name} model revision not verified; refusing latency run: {metadata}"
+                f"{name} model revision not verified; "
+                f"refusing latency run: {metadata}"
             )
 
 
