@@ -1,200 +1,258 @@
 # Enterprise Hybrid Search
 
-**A practical Python project for combining keyword search, semantic search, and reranking.**
+A reproducible Python retrieval-engineering project that combines **BM25 keyword search**, **dense semantic retrieval**, and **Reciprocal Rank Fusion (RRF)**, with an optional **Cross-Encoder reranking** stage.
 
-Enterprise Hybrid Search explores a common retrieval problem: keyword search is good at finding exact terms, IDs, and error codes, while dense retrieval can find related meaning even when the wording differs. This project runs both retrievers, combines their rankings with Reciprocal Rank Fusion (RRF), and can optionally rerank the candidates with a cross-encoder.
-
-> **Current status:** The retrieval pipeline and evaluation CLI are implemented, with 130 passing baseline tests. Fake-model evaluation is for smoke testing only. A real-model evaluation has run on the small sample dataset, but a representative external benchmark has not yet been validated. A hosted search API and complete browser UI are still pending.
+The project focuses on making retrieval behavior measurable: deterministic evaluation workflows, model-revision provenance, per-query ranking traces, latency measurements, and regression tests. It is currently a **retrieval and evaluation toolkit prototype**—not a hosted enterprise search product or a production RAG platform.
 
 <p align="center">
-  <img src="assets/enterprise-hybrid-search-social-card.png" alt="Enterprise Hybrid Search: BM25 and dense retrieval combined with RRF and optional reranking" width="100%" />
+  <img src="assets/enterprise-hybrid-search-social-card.png" alt="Enterprise Hybrid Search: BM25 and dense retrieval combined with RRF and optional Cross-Encoder reranking" width="100%" />
 </p>
 
-## What it includes
+## Project status
 
-- **Text chunking:** word-window chunks with configurable size and overlap.
-- **BM25 sparse search:** exact token matching with Lucene-style IDF, term-frequency saturation, and document-length normalisation.
-- **Dense search:** exact cosine-similarity search with NumPy; the embedding function is injected, so tests do not need a model download.
-- **Hybrid ranking:** Reciprocal Rank Fusion (RRF) combines sparse and dense rankings without adding scores from different scales directly.
-- **Optional reranking:** a cross-encoder scores a smaller set of fused candidates.
-- **Evaluation:** Precision@K, Recall@K, MRR, nDCG@K, and p50/p95 latency, with separate document-level and chunk-level evaluation paths.
-- **Input validation:** checks for corpus/query schemas, duplicate IDs, invalid parameters, unexpected model output shapes, and non-finite scores.
-- **Automated tests:** unit, edge-case, and end-to-end tests; GitHub Actions CI is configured.
+- **Retrieval:** BM25, exact dense cosine search, RRF hybrid retrieval, and optional Cross-Encoder reranking are implemented.
+- **Evaluation:** document-level and chunk-level evaluation, per-query traces, provenance metadata, and dedicated latency tooling are implemented.
+- **Tests:** **310 tests passed** in the local test run on 1 November 2026 (`4.74s`). This is a local test result, not a claim about an external CI run.
+- **Benchmark:** a pinned-model SciFact document-level evaluation has been run on 300 queries. The results and limitations are documented below.
+- **Persistence:** an on-disk per-text embedding cache exists. A versioned, persistent searchable vector index and complete document update/delete lifecycle are not implemented.
+- **Product surface:** hosted API, grounded RAG answer generation, authentication, multi-tenant access control, and a complete browser search UI are not implemented.
+
+## What the project includes
+
+- **BM25 sparse retrieval:** token-based retrieval with Lucene-style inverse document frequency, term-frequency saturation, and document-length normalisation.
+- **Dense retrieval:** exact cosine-similarity search using NumPy and injected embedding functions.
+- **Hybrid retrieval:** Reciprocal Rank Fusion combines sparse and dense rank positions without directly adding scores from different scales.
+- **Optional reranking:** a Sentence Transformers Cross-Encoder can rescore a bounded candidate pool.
+- **Chunking:** word-window chunking with configurable size and overlap, plus a no-chunk document-level mode.
+- **Embedding cache:** per-text NumPy vectors persisted on disk, with corruption checks and atomic file replacement.
+- **Evaluation:** Precision@K, Recall@K, MRR, nDCG@K, candidate recall, per-query traces, and latency reporting.
+- **Provenance:** corpus/query fingerprints, model revision metadata, runtime information, and Git state in saved evaluation artifacts.
+- **Tests:** unit, edge-case, regression, and end-to-end tests.
 
 ## Retrieval flow
 
 ```text
-JSONL documents
-      |
-      v
- word-window chunking
-      |
-      +----------------------------+
-      |                            |
-      v                            v
- BM25 sparse search        Dense cosine search
-      |                            |
-      +-------------+--------------+
-                    |
-                    v
-           RRF rank fusion
-                    |
-                    v
-       Optional cross-encoder rerank
-                    |
-                    v
-          Ranked chunk results
-                    |
-                    v
-      Evaluation: P@K, R@K, MRR,
-             nDCG@K, p50/p95
+                         JSONL corpus
+                              |
+                              v
+                       Text chunking
+                              |
+                  +-----------+-----------+
+                  |                       |
+                  v                       v
+            BM25 sparse              Dense cosine
+              retrieval               retrieval
+                  |                       |
+                  +-----------+-----------+
+                              |
+                              v
+                       RRF rank fusion
+                              |
+                              v
+                  Optional Cross-Encoder
+                         reranking
+                              |
+                              v
+                       Ranked results
+                              |
+                              v
+               Evaluation and per-query traces
 ```
 
-Read more: [Architecture](docs/ARCHITECTURE.md) · [Engineering decisions](docs/DECISIONS.md) · [Project overview page](https://Leonidus786.github.io/enterprise-hybrid-search/).
+The Cross-Encoder is an optional ranking stage. The current SciFact experiments did **not** show a ranking-metric improvement over hybrid retrieval, and CPU inference was substantially more expensive. Run it deliberately and measure it on the target corpus before adopting it.
 
 ## Quick start
 
-Python 3.10 or newer is required. The commands below use [`uv`](https://docs.astral.sh/uv/) and work from the project root.
+### Requirements
 
-### 1. Install the project and development dependencies
+- Python 3.10 or newer
+- [`uv`](https://docs.astral.sh/uv/)
+- Optional: the model dependencies and sufficient RAM/disk space for Sentence Transformers models
+
+### 1. Install development dependencies
 
 ```bash
 uv sync --extra dev
 ```
 
-### 2. Run the tests
-
-```bash
-uv run python -m pytest -q
-```
-
-The current local baseline is **130 passing tests**. Runtime depends on the machine and environment.
-
-### 3. Run the offline evaluation smoke test
-
-```bash
-uv run python scripts/run_eval.py --fake
-```
-
-This runs the BM25, dense, hybrid, and hybrid-plus-reranking paths using deterministic fake functions. It is useful for checking that the pipeline and metrics execute end to end. **Do not use these fake-model scores to claim retrieval quality or compare real models.**
-
-### 4. Run with real embedding and reranking models
-
-Install the optional model dependencies:
+For real embedding and Cross-Encoder evaluation, install the model extra too:
 
 ```bash
 uv sync --extra models --extra dev
 ```
 
-Then run:
+### 2. Run the test suite
+
+```bash
+uv run python -m pytest -q
+```
+
+Latest recorded local result:
+
+```text
+310 passed in 4.74s
+```
+
+Test counts and runtime can change as the repository evolves and depend on the local environment.
+
+### 3. Run an offline smoke test
+
+```bash
+uv run python scripts/run_eval.py --fake
+```
+
+The fake embedding and scoring functions allow the retrieval and evaluation flow to run without downloading models. Fake-model metrics are **smoke-test output only**: do not use them as evidence of retrieval quality or as a comparison between real retrieval models.
+
+### 4. Run a real-model evaluation
 
 ```bash
 uv run python scripts/run_eval.py
 ```
 
-The first real-model run downloads the configured Sentence Transformers models and may take time and disk space. By default, the script uses:
+The first run may download the configured models. With no `--strategies` argument, the current CLI evaluates all four strategies (`bm25`, `dense`, `hybrid`, and `hybrid_rerank`). To exclude the reranked strategy from the evaluation, pass an explicit strategy list such as `--strategies bm25 dense hybrid`. The current real-model runner still initializes the Cross-Encoder adapter before evaluation even when that strategy is excluded; lazy loading it only when requested is a remaining implementation improvement.
 
-- Embeddings: `BAAI/bge-small-en-v1.5`
-- Reranker: `cross-encoder/ms-marco-MiniLM-L-6-v2`
+The current model defaults are:
 
-A real-model evaluation has completed on the small sample corpus, but these results are not a representative benchmark and do not establish general retrieval quality. Review the data and relevance labels before treating the output as a benchmark. For CPU/GPU memory constraints, see the [Sentence Transformers documentation](https://www.sbert.net/).
+| Component | Model | Pinned revision in the recorded SciFact run |
+|---|---|---|
+| Embeddings | `BAAI/bge-small-en-v1.5` | `5c38ec7c405ec4b44b94cc5a9bb96e735b38267a` |
+| Cross-Encoder | `cross-encoder/ms-marco-MiniLM-L-6-v2` | `233902d25c440f23af6f7d6e94d2946bac0bee0a` |
 
-### Install with pip instead
+The CLI supports explicit model revisions. See the evaluation examples below for a reproducible command shape.
 
-```bash
-python -m pip install -e ".[dev]"
-python -m pytest -q
-python scripts/run_eval.py --fake
-```
+## Input data format
 
-For real-model evaluation, install the model extra too:
-
-```bash
-python -m pip install -e ".[models,dev]"
-python scripts/run_eval.py
-```
-
-## Evaluation data
-
-The repository includes a small example corpus of **14 documents** at `data/sample/corpus.jsonl` and **10 labeled queries** at `data/sample/queries.json`. This is a learning/evaluation starter set, not a representative enterprise dataset.
-
-With the default `--k 10`, the printed report includes **Recall@10** (shown as `recall@10`), Precision@10, MRR, nDCG@10, and p50/p95 latency. These are metric names, not a published real-model result.
-
-Each corpus JSONL row has this shape:
+The current corpus loader reads JSONL. Each line represents one document:
 
 ```json
-{ "doc_id": "example_doc", "text": "Text to index goes here." }
+{"doc_id": "example_doc", "text": "Text to index goes here."}
 ```
 
-Each query entry has this shape:
+The query file is a JSON array. Each query has an ID, query text, and relevant document IDs:
 
 ```json
-{
-  "id": "q1",
-  "query": "How do I find the relevant passage?",
-  "relevant": ["example_doc"]
-}
+[
+  {
+    "id": "q1",
+    "query": "How do I find the relevant passage?",
+    "relevant": ["example_doc"]
+  }
+]
 ```
 
-The `relevant` values are document IDs for document-level evaluation. Use chunk IDs only with the chunk-level protocol. The data is a small starter set, not a representative enterprise benchmark. For meaningful claims, build a representative corpus, label relevant results, and report the real-model results with the model names, settings, dataset, and latency environment.
+For document-level evaluation, `relevant` contains parent document IDs. For chunk-level evaluation, use the chunk-ID space expected by the chunk-level protocol. The bundled `data/sample/` corpus and labels are a small starter dataset, not a representative enterprise benchmark.
 
-### Useful CLI options
+## Useful evaluation commands
+
+### Offline smoke test
 
 ```bash
-# Change the evaluation cutoff
-uv run python scripts/run_eval.py --k 5 --fake
-
-# Change how many fused chunks are passed to the reranker
-uv run python scripts/run_eval.py --candidate-k 100 --fake
-
-# Evaluate chunk IDs rather than unique parent documents
-uv run python scripts/run_eval.py --level chunk --fake
-
-# Use real models but disable the BGE query-side instruction
-uv run python scripts/run_eval.py --no-bge-prefix
+uv run python scripts/run_eval.py --fake
 ```
 
-The `--fake` flag is for pipeline smoke tests only. The `--no-bge-prefix` option applies to real-model runs; it is not a claim that one prefix setting is universally better.
+### Compare retrieval without reranking
 
-## Design notes
+```bash
+uv run python scripts/run_eval.py --strategies bm25 dense hybrid
+```
 
-- **Why RRF?** BM25 scores and cosine similarities live on different scales. RRF combines rank positions without requiring score calibration.
-- **Why exact cosine search?** It keeps the implementation small and straightforward to test. Very large corpora may need an approximate nearest-neighbour index or vector database.
-- **Why inject models?** Tests stay fast and offline, and embedding/reranking implementations can be swapped without rewriting retrieval logic.
-- **Why separate document-level and chunk-level evaluation?** Ranking chunks and then deduplicating can allow many chunks from one document to crowd other documents out. The evaluation code keeps these protocols separate.
+### Explicitly evaluate hybrid retrieval and reranking
 
-These are engineering choices, not claims that the current defaults are optimal. See [DECISIONS.md](docs/DECISIONS.md) for trade-offs and experiments still to run.
+```bash
+uv run python scripts/run_eval.py --strategies hybrid hybrid_rerank --candidate-k 10
+```
 
-## Current limitations
+### Evaluate chunk IDs instead of parent document IDs
 
-- No hosted API, authentication, persistent vector database, or complete browser search UI is included yet.
-- Ingestion currently reads JSONL documents and chunks their text. It does **not** currently provide direct PDF/TXT upload UI.
-- The example corpus and labels are small and should not be treated as an enterprise benchmark.
-- Fake-model scores are not evidence of real retrieval quality.
-- Exact dense search scans all stored vectors; large-corpus deployment will require performance testing and may need ANN/vector-database support.
-- A `LICENSE` file has not been added yet. Until a license is chosen and included, do not assume others have permission to reuse or redistribute the code.
+```bash
+uv run python scripts/run_eval.py --level chunk
+```
 
-## Roadmap
+### Evaluate each document as one searchable item
 
-1. Run and document real-model benchmarks on a more representative, labeled corpus.
-2. Study candidate-pool size versus reranking latency and retrieval quality.
-3. Add a small API and user-facing search demo.
-4. Add document ingestion, persistence, deployment, and access controls only after the retrieval baseline is measured.
+```bash
+uv run python scripts/run_eval.py --no-chunk --level doc
+```
 
-## Project links
+### Pin model revisions and save a result artifact
 
-- [Architecture](docs/ARCHITECTURE.md)
-- [Engineering decisions](docs/DECISIONS.md)
-- [Static project page and toy RRF explainer](docs/index.html)
-- [Social launch copy](docs/SOCIAL_POSTS.md)
+```bash
+uv run python scripts/run_eval.py ^
+  --corpus data/scifact_test/corpus.jsonl ^
+  --queries data/scifact_test/queries.json ^
+  --k 10 ^
+  --retrieval-k 100 ^
+  --candidate-k 50 ^
+  --level doc ^
+  --no-chunk ^
+  --embedding-revision 5c38ec7c405ec4b44b94cc5a9bb96e735b38267a ^
+  --reranker-revision 233902d25c440f23af6f7d6e94d2946bac0bee0a ^
+  --output results/scifact_doclevel_pinned_v2.json
+```
 
-If you try the project, feedback on evaluation design, fusion, or reranking is welcome. The next update will focus on real-model measurements rather than unverified performance claims.
+The line-continuation character `^` in this example is for Windows CMD. On shells that use a different continuation syntax, put the command on one line or adjust the separators.
 
-<!-- BEGIN GENERATED HYBRID SEARCH BENCHMARK -->
-## Benchmark results
+### Cross-Encoder inference options
 
-**Dataset:** SciFact test | **Queries:** 300 / 300 | **Corpus documents:** 5183 | **Searchable items:** 5183.
-**Protocol:** doc-level; chunking configuration recorded in JSON | **K:** 10 | **Retrieval K:** 100 | **Candidate K:** 50.
+The evaluation CLI supports the following Cross-Encoder settings. The options affect the reranking implementation when `hybrid_rerank` is evaluated:
+
+| Option | Purpose | Current default |
+|---|---|---|
+| `--reranker-batch-size` | Number of query/document pairs per inference batch | `8` |
+| `--reranker-device` | Explicit inference device, such as `cpu` or `cuda` | automatic (`None`) |
+| `--reranker-max-length` | Override the model's maximum input length | model setting (`None`) |
+
+Example for a CPU run:
+
+```bash
+uv run python scripts/run_eval.py --strategies hybrid hybrid_rerank --candidate-k 10 --reranker-batch-size 8 --reranker-device cpu
+```
+
+Batch size 8 is a **provisional, exploratory CPU-oriented default**, not a universal optimum. The profiling sample was small and showed timing variability. Re-profile on the hardware and workload that matter before selecting deployment settings.
+
+### Latency benchmark tooling
+
+The repository includes a dedicated latency runner and an exploratory Cross-Encoder batch-size profiler:
+
+```bash
+uv run python scripts/run_latency.py --help
+uv run python scripts/profile_reranker_batch_sizes.py --help
+```
+
+Check the script help for the current arguments and defaults before running a benchmark. Keep model loading, warm-up, cache behavior, query selection, trial count, hardware, and strategy ordering explicit in any reported latency result.
+
+## Evaluation methodology
+
+The evaluator supports document-level and chunk-level ranking protocols. It can save aggregate metrics together with per-query traces, input fingerprints, model metadata, runtime details, and the Git state observed during the run.
+
+Metrics used in the project include:
+
+- **Precision@K:** fraction of the top-K results that are relevant.
+- **Recall@K:** fraction of relevant items retrieved in the top K.
+- **MRR:** reciprocal rank of the first relevant result, averaged over queries.
+- **nDCG@K:** ranking quality with position-sensitive gain; graded labels can be used where available.
+- **Candidate Recall:** fraction of relevant items present in the candidate pool passed to later stages.
+- **Latency percentiles:** P50/P95/P99 where the benchmark protocol records them.
+
+Document-level and chunk-level results are different evaluation protocols. Do not combine their metrics or confidence intervals in one comparison. A small query set is useful for debugging, but it is not a substitute for a representative held-out evaluation set.
+
+## Recorded benchmark: SciFact document-level retrieval
+
+<details>
+<summary>Benchmark scope and model configuration</summary>
+
+- Dataset: BEIR SciFact test split
+- Evaluated queries: 300 / 300
+- Corpus: 5,183 unique documents and 5,183 searchable items
+- Evaluation level: document
+- Chunking: disabled (one searchable item per document)
+- `k=10`, `retrieval_k=100`, `candidate_k=50`
+- Embedding model: `BAAI/bge-small-en-v1.5`, revision `5c38ec7c405ec4b44b94cc5a9bb96e735b38267a`
+- Cross-Encoder: `cross-encoder/ms-marco-MiniLM-L-6-v2`, revision `233902d25c440f23af6f7d6e94d2946bac0bee0a`
+- Model revisions were verified against the loaded model/local cached snapshot in the recorded run.
+- Embedding cache: disabled for this canonical evaluation.
+
+</details>
 
 | Strategy | Precision@10 | Recall@10 | Recall@100 | Candidate Recall@50 | MRR@10 | nDCG@10 |
 |---|---:|---:|---:|---:|---:|---:|
@@ -203,20 +261,87 @@ If you try the project, feedback on evaluation design, fusion, or reranking is w
 | Hybrid (BM25 + Dense, RRF) | 0.0933 | 0.8331 | 0.9617 | 0.9406 | 0.6765 | 0.7103 |
 | Hybrid + Cross-Encoder | 0.0920 | 0.8211 | 0.9617 | 0.9406 | 0.6568 | 0.6901 |
 
-### Reproducibility metadata
-- Embedding model: `BAAI/bge-small-en-v1.5`; revision `5c38ec7c405ec4b44b94cc5a9bb96e735b38267a`; revision verified: `True`.
-- Reranker model: `cross-encoder/ms-marco-MiniLM-L-6-v2`; revision `233902d25c440f23af6f7d6e94d2946bac0bee0a`; revision verified: `True`.
-- Persistent embedding cache setting: `disabled`.
-- Git commit: `3afc66099fe2cf5ec2d7c218d562ef3ca82c6cdb`; working-tree state recorded as `clean`.
-- Source artifact: `results/scifact_doclevel_pinned_v2.json`.
+### Interpretation
 
-### Interpretation and limitations
-- These are observed results for this SciFact configuration, not evidence of state-of-the-art performance or enterprise-domain effectiveness.
-- Keep document-level and chunked experiments in separate tables; do not combine their metrics or confidence intervals.
-- The Cross-Encoder result is an experiment, not the default recommendation: on the recorded run it did not improve the displayed ranking metrics and added substantial CPU inference time. It should remain optional/off by default until it demonstrates a measured gain on the target corpus.
-- The latency values in an evaluation JSON are not a production latency claim. Publish P50/P95 only from the dedicated repeated, warm-model, interleaved latency protocol with uncached query embeddings and recorded hardware.
-- The benchmark uses English scientific text. It does not establish performance on private enterprise documents, other domains, multilingual/Hinglish queries, concurrent traffic, or million-document corpora.
-- This repository is a retrieval/evaluation toolkit prototype. Do not describe it as enterprise-ready or production-ready until authentication, tenant isolation, source ACL enforcement, deletion, monitoring, recovery, and security controls have been implemented and tested.
+- Hybrid retrieval had the highest displayed Recall@10, Recall@100, Candidate Recall@50, MRR@10, and nDCG@10 among these four recorded rows. The differences between Dense and Hybrid were **not statistically established as significant** by the paired-bootstrap analysis conducted for this experiment.
+- In this run, the Cross-Encoder row was lower than Hybrid on Precision@10, Recall@10, MRR@10, and nDCG@10. It did not demonstrate a ranking-quality improvement on this dataset/configuration.
+- These measurements describe one pinned SciFact evaluation. They do not establish performance on private enterprise documents, other domains, multilingual/Hinglish queries, concurrent workloads, or larger corpora.
+- The evaluation latency fields in this result artifact are not the dedicated repeated-latency benchmark reported below and should not be presented as production latency.
 
-> Numbers are generated from the result JSON. Do not hand-edit the table; rerun the generator after creating a new benchmark artifact.
-<!-- END GENERATED HYBRID SEARCH BENCHMARK -->
+## Dedicated repeated latency benchmark
+
+A separate latency run used 30 distinct SciFact queries, five measured trials per strategy (150 samples per strategy), and 10 warm-up queries excluded from the measured samples. Model loading was outside the timed samples. Query embedding cache was disabled, document embedding cache was enabled, and strategy order rotated. The recorded environment was CPU-only (8 logical CPU cores, 4 PyTorch threads; CUDA unavailable).
+
+| Strategy | Total latency P50 (ms) | P95 (ms) | P99 (ms) |
+|---|---:|---:|---:|
+| BM25 | 60.67 | 123.02 | 179.31 |
+| Dense | 130.22 | 314.60 | 471.96 |
+| Hybrid | 188.75 | 417.10 | 518.09 |
+| Hybrid + Cross-Encoder | 8,845.14 | 12,718.23 | 15,545.64 |
+
+For the recorded reranking run, the Cross-Encoder component itself had P50 latency of approximately **8,667.56 ms** and P95 of approximately **12,446.21 ms**. On this CPU environment, the hybrid-plus-reranker total P50 was about **46.9 times** the Hybrid P50. This is a measurement of the specific benchmark setup, not a universal multiplier or a production service SLA.
+
+## Reranker candidate-depth and batch-size experiments
+
+The candidate-depth diagnostic compares `candidate_k` values of 10, 20, and 50 on the first 30 of 300 SciFact queries. Each setting used one evaluation pass per query and strategy. The observed candidate recall increased as the pool grew, but the reranker did not improve the displayed ranking metrics and its CPU cost increased substantially with candidate depth.
+
+| Candidate K | Hybrid Candidate Recall@K | Reranked MRR@10 | Reranked nDCG@10 | Reranker component P50 (ms) |
+|---:|---:|---:|---:|---:|
+| 10 | 0.843 | 0.679 | 0.721 | 1,166.90 |
+| 20 | 0.893 | 0.681 | 0.723 | 2,576.71 |
+| 50 | 0.967 | 0.675 | 0.711 | 7,279.13 |
+
+These are exploratory 30-query, single-pass comparisons—not repeated latency percentiles and not a final statistical claim. The full diagnostic, including the paired Hybrid comparison and end-to-end timings, is in [`docs/RERANKER_CANDIDATE_DEPTH_DIAGNOSTIC.md`](docs/RERANKER_CANDIDATE_DEPTH_DIAGNOSTIC.md).
+
+A later 30-query `candidate_k=10`, batch-size-8 evaluation recorded Hybrid P50 of **29.75 ms** and Hybrid+Rerank P50 of **918.51 ms**. Ranking values were unchanged from the earlier candidate-K=10 run (reranked MRR@10 `0.679`, nDCG@10 `0.721`). This was a single evaluation pass, not the dedicated repeated-latency protocol; it should not be used to claim a validated speed-up over the earlier run.
+
+### Current reranker decision
+
+Keep Cross-Encoder reranking available as an **optional experiment**, and compare it with the Hybrid baseline on the target dataset before using it. The current evidence does not justify treating it as a default quality improvement. Small profiling runs are insufficient to select a universally optimal batch size.
+
+## Design decisions and trade-offs
+
+- **Why RRF?** BM25 scores and cosine similarities are on different scales. RRF combines rank positions without requiring score calibration.
+- **Why exact cosine search?** It is simple to inspect and test. Exact matrix search scans the stored vectors; very large corpora may require an ANN index or vector database after workload-specific evaluation.
+- **Why inject model functions?** Retrieval tests can run offline with deterministic functions, and model implementations can be replaced without rewriting ranking logic.
+- **Why separate document and chunk evaluation?** Multiple chunks from one parent document can crowd other documents out. Document-level evaluation deduplicates to parent IDs; chunk-level evaluation measures chunk rankings.
+- **Why keep reranking optional?** The recorded SciFact runs did not show a ranking gain, while CPU inference introduced significant additional latency.
+
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/DECISIONS.md`](docs/DECISIONS.md) for implementation details and engineering trade-offs.
+
+## Current limitations
+
+- The corpus loader currently supports JSONL documents with `doc_id` and `text`; a PDF/TXT upload workflow and rich source metadata pipeline are not implemented.
+- The embedding cache persists individual text vectors, but its current cache identity is based on model ID and exact text. **Model revision and embedding configuration are not yet included in that cache identity**, so revision-aware cache isolation remains required before relying on it across model upgrades.
+- The dense searchable matrix is constructed in memory when the index is initialized. There is no versioned persistent index manifest with verified save/load, incremental update, deletion, and rebuild lifecycle.
+- No hosted search API, grounded RAG answer endpoint, authentication, tenant isolation, source-level ACL enforcement, monitoring, backup/recovery workflow, or complete browser search UI is included.
+- Exact dense retrieval scans the stored vectors; scalability and concurrency have not been validated for large corpora or production traffic.
+- The SciFact benchmark is English scientific text and is not representative of every enterprise retrieval domain.
+- No `LICENSE` file is currently included. Until a license is selected and added, do not assume the repository grants permission to reuse or redistribute the code.
+
+## Roadmap
+
+1. Make embedding-cache identity revision- and configuration-aware, with regression tests for cache isolation.
+2. Extend ingestion with validated metadata, stable document/chunk identity, duplicate handling, and explicit empty/malformed-document behavior.
+3. Implement a versioned persistent searchable index with manifest validation, rebuild, update, and delete operations.
+4. Add a typed search API, then a grounded RAG answer path with source citations, abstention behavior, and answer-quality evaluation.
+5. Build a browser demo for comparing BM25, Dense, Hybrid, and optional reranking results.
+6. Add deployment, observability, access controls, security testing, load testing, and recovery evidence before making production-readiness claims.
+
+## Repository documentation
+
+- [Architecture](docs/ARCHITECTURE.md)
+- [Engineering decisions](docs/DECISIONS.md)
+- [Cross-Encoder candidate-depth diagnostic](docs/RERANKER_CANDIDATE_DEPTH_DIAGNOSTIC.md)
+- [Static project page and RRF explainer](docs/index.html)
+- [Social launch copy](docs/SOCIAL_POSTS.md)
+
+## Reproducibility notes
+
+The benchmark values in this README are transcribed from the recorded evaluation and latency artifacts available during documentation preparation. The `results/` directory is ignored by Git in the current repository state, so the referenced raw JSON artifacts are **not included in this README replacement or necessarily available to a fresh clone**. Keep the raw artifacts with a release or another durable location before presenting the results as independently reproducible.
+
+When publishing a new benchmark, retain the corpus and query fingerprints, model IDs and immutable revisions, cache configuration, chunking protocol, candidate depth, hardware, software environment, warm-up policy, trial count, and per-query traces. Do not mix document-level and chunk-level evaluation results or treat fake-model smoke tests as retrieval-quality evidence.
+
+---
+
+Feedback on retrieval methodology, evaluation design, fusion, and reranking is welcome.

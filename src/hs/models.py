@@ -154,14 +154,56 @@ def sentence_embedder(name="BAAI/bge-small-en-v1.5", revision=None):
     )
 
 
-def cross_encoder_scorer(name="cross-encoder/ms-marco-MiniLM-L-6-v2", revision=None):
+def cross_encoder_scorer(
+    name="cross-encoder/ms-marco-MiniLM-L-6-v2",
+    revision=None,
+    *,
+    batch_size: int = 8,
+    device: str | None = None,
+    max_length: int | None = None,
+):
+    """Create a configurable CrossEncoder scorer.
+
+    ``batch_size=8`` is a provisional CPU-oriented default based on the
+    project's exploratory 3-query profiling. Re-benchmark on the deployment
+    hardware before treating it as optimal. ``device=None`` lets
+    Sentence Transformers select the device; ``max_length=None`` preserves
+    the model's own configured maximum sequence length.
+    """
+    if isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size < 1:
+        raise ValueError("batch_size must be a positive integer")
+    if max_length is not None and (
+        isinstance(max_length, bool) or not isinstance(max_length, int) or max_length < 1
+    ):
+        raise ValueError("max_length must be a positive integer or None")
+    if device is not None and (not isinstance(device, str) or not device.strip()):
+        raise ValueError("device must be a non-empty string or None")
+
     from sentence_transformers import CrossEncoder
 
-    model = CrossEncoder(name, **({"revision": revision} if revision else {}))
+    model_kwargs = {}
+    if revision:
+        model_kwargs["revision"] = revision
+    if device is not None:
+        model_kwargs["device"] = device
+    if max_length is not None:
+        model_kwargs["max_length"] = max_length
+
+    model = CrossEncoder(name, **model_kwargs)
 
     def score(pairs):
-        return model.predict(pairs).tolist()
+        predictions = model.predict(
+            pairs,
+            batch_size=batch_size,
+            show_progress_bar=False,
+        )
+        return predictions.tolist() if hasattr(predictions, "tolist") else list(predictions)
 
+    score.inference_config = {
+        "batch_size": batch_size,
+        "device": device,
+        "max_length": max_length,
+    }
     return _attach_metadata(
         score, model_id=name, requested_revision=revision, model=model
     )

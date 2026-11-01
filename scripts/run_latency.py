@@ -257,6 +257,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--k", type=int, default=100,
                         help="Search depth for each timed request")
     parser.add_argument("--candidate-k", type=int, default=50)
+    parser.add_argument("--reranker-batch-size", type=int, default=8)
+    parser.add_argument("--reranker-device", default=None,
+                        help="Optional CrossEncoder device, e.g. cpu or cuda")
+    parser.add_argument("--reranker-max-length", type=int, default=None)
     parser.add_argument("--trials", type=int, default=5)
     parser.add_argument("--warmup-queries", type=int, default=10)
     parser.add_argument("--max-queries", type=int, default=None)
@@ -283,6 +287,12 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
     validate_trials(args.trials)
     if args.k < 1 or args.candidate_k < 1:
         raise ValueError("--k and --candidate-k must be positive")
+    if args.reranker_batch_size < 1:
+        raise ValueError("--reranker-batch-size must be >= 1")
+    if args.reranker_max_length is not None and args.reranker_max_length < 1:
+        raise ValueError("--reranker-max-length must be >= 1")
+    if args.reranker_device is not None and not args.reranker_device.strip():
+        raise ValueError("--reranker-device must be non-empty when provided")
     if args.warmup_queries < 0:
         raise ValueError("--warmup-queries must be >= 0")
     if args.max_queries is not None and args.max_queries < 1:
@@ -320,7 +330,11 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
         embedding_model_id, revision=args.embedding_revision
     )
     score_fn = cross_encoder_scorer(
-        reranker_model_id, revision=args.reranker_revision
+        reranker_model_id,
+        revision=args.reranker_revision,
+        batch_size=args.reranker_batch_size,
+        device=args.reranker_device,
+        max_length=args.reranker_max_length,
     )
     model_metadata = {
         "embedding": query_embedder.model_metadata,
@@ -383,6 +397,11 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
         "embedding_revision_requested": args.embedding_revision,
         "reranker_model": reranker_model_id,
         "reranker_revision_requested": args.reranker_revision,
+        "reranker_inference": {
+            "batch_size": args.reranker_batch_size,
+            "device": args.reranker_device,
+            "max_length": args.reranker_max_length,
+        },
         "document_embedding_cache_enabled": True,
         "query_embedding_cache_enabled": False,
         "document_embedding_cache_dir": str(Path(args.cache_dir)),

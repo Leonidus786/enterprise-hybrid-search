@@ -50,6 +50,18 @@ def build_parser():
         "--candidate-k", type=int, default=50,
         help="Candidates passed to the cross-encoder reranker",
     )
+    parser.add_argument(
+        "--reranker-batch-size", type=int, default=8,
+        help="CrossEncoder inference batch size (provisional CPU-oriented default: 8)",
+    )
+    parser.add_argument(
+        "--reranker-device", default=None,
+        help="Optional CrossEncoder device, e.g. cpu or cuda; default selects automatically",
+    )
+    parser.add_argument(
+        "--reranker-max-length", type=int, default=None,
+        help="Optional CrossEncoder maximum input length; default uses the model setting",
+    )
     parser.add_argument("--level", choices=["doc", "chunk"], default="doc")
     chunk_group = parser.add_mutually_exclusive_group()
     chunk_group.add_argument(
@@ -182,6 +194,11 @@ def save_results_json(
         "reranker_model": None if args.fake else "cross-encoder/ms-marco-MiniLM-L-6-v2",
         "embedding_revision_requested": getattr(args, "embedding_revision", None),
         "reranker_revision_requested": getattr(args, "reranker_revision", None),
+        "reranker_inference": {
+            "batch_size": getattr(args,"reranker_batch_size",8),
+            "device": getattr(args,"reranker_device",None),
+            "max_length": getattr(args,"reranker_max_length",None),
+        },
         "cache_enabled": not args.no_cache,
         "cache_dir": None if args.no_cache else str(Path(getattr(args, "cache_dir", ".cache/embeddings"))),
         "bge_prefix_enabled": not (args.fake or args.no_bge_prefix),
@@ -248,6 +265,12 @@ def main(argv=None):
         raise ValueError("--retrieval-k must be >= --k")
     if args.candidate_k < 1:
         raise ValueError("--candidate-k must be >= 1")
+    if args.reranker_batch_size < 1:
+        raise ValueError("--reranker-batch-size must be >= 1")
+    if args.reranker_max_length is not None and args.reranker_max_length < 1:
+        raise ValueError("--reranker-max-length must be >= 1")
+    if args.reranker_device is not None and not args.reranker_device.strip():
+        raise ValueError("--reranker-device must be non-empty when provided")
     if args.max_queries is not None and args.max_queries < 1:
         raise ValueError("--max-queries must be >= 1")
     if args.chunk_size < 1:
@@ -275,7 +298,12 @@ def main(argv=None):
     else:
         from hs.models import cross_encoder_scorer, sentence_embedder
         embed = sentence_embedder(revision=args.embedding_revision)
-        score = cross_encoder_scorer(revision=args.reranker_revision)
+        score = cross_encoder_scorer(
+            revision=args.reranker_revision,
+            batch_size=args.reranker_batch_size,
+            device=args.reranker_device,
+            max_length=args.reranker_max_length,
+        )
         embedding_model_id = "BAAI/bge-small-en-v1.5"
         model_metadata = {
             "embedding": getattr(embed, "model_metadata", {
