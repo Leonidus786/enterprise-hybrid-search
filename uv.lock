@@ -290,6 +290,7 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
+    { name = "huggingface-hub" },
     { name = "pytest" },
     { name = "pytest-cov" },
 ]
@@ -299,6 +300,7 @@ models = [
 
 [package.metadata]
 requires-dist = [
+    { name = "huggingface-hub", marker = "extra == 'dev'" },
     { name = "numpy" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pytest-cov", marker = "extra == 'dev'" },

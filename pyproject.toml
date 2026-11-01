@@ -10,7 +10,11 @@ dependencies = ["numpy"]
 
 [project.optional-dependencies]
 models = ["sentence-transformers"]
-dev = ["pytest", "pytest-cov"]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "huggingface-hub",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
