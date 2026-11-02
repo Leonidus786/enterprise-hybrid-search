@@ -4,31 +4,84 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import tempfile
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 
 import numpy as np
 
 
 class CachedEmbedder:
-    """Cache individual text embeddings while preserving input row order."""
+    """Cache individual text embeddings while preserving input row order.
+
+    The historical three-argument constructor remains supported. Persistent
+    model caches should also provide a resolved immutable revision and every
+    vector-affecting embedding setting through ``embedding_config``.
+    """
 
     def __init__(
         self,
         embed_fn: Callable[[list[str]], np.ndarray],
         cache_dir: str | Path,
         model_id: str,
+        *,
+        model_revision: str | None = None,
+        embedding_config: Mapping[str, object] | None = None,
     ) -> None:
         if not isinstance(model_id, str) or not model_id.strip():
             raise ValueError("model_id must be a non-empty string")
         if not callable(embed_fn):
             raise TypeError("embed_fn must be callable")
+        if model_revision is not None and (
+            not isinstance(model_revision, str) or not model_revision.strip()
+        ):
+            raise ValueError("model_revision must be a non-empty string or None")
+        if embedding_config is not None and not isinstance(embedding_config, Mapping):
+            raise TypeError("embedding_config must be a mapping or None")
+
+        # Serialize config once so nested mappings use a deterministic identity.
+        # Reject NaN/Infinity because they are not valid, portable JSON values.
+        try:
+            config_json = (
+                json.dumps(
+                    dict(embedding_config),
+                    sort_keys=True,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                )
+                if embedding_config is not None
+                else None
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError("embedding_config must contain JSON-safe values") from exc
 
         self.embed_fn = embed_fn
         self.cache_dir = Path(cache_dir)
         self.model_id = model_id
+        self.model_revision = model_revision.strip() if model_revision is not None else None
+        self.embedding_config = json.loads(config_json) if config_json is not None else None
+
+        # The original three-argument constructor retains its historical key
+        # format. New callers get an isolated namespace for every model revision
+        # and vector-affecting configuration.
+        self._cache_identity = None
+        if self.model_revision is not None or config_json is not None:
+            self._cache_identity = json.dumps(
+                {
+                    "cache_schema_version": 2,
+                    "model_id": self.model_id,
+                    "model_revision": self.model_revision,
+                    "embedding_config": self.embedding_config,
+                },
+                sort_keys=True,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
+
         self._hits = 0
         self._misses = 0
 
@@ -38,10 +91,13 @@ class CachedEmbedder:
         return {"hits": self._hits, "misses": self._misses}
 
     def _path_for(self, text: str) -> Path:
-        # Both model identity and exact text determine the cache key.
-        key = hashlib.sha256(
-            f"{self.model_id}\0{text}".encode("utf-8")
-        ).hexdigest()
+        # Legacy callers retain the original key format. Revision-aware callers
+        # hash the complete, canonical model/config identity with the exact text.
+        if self._cache_identity is None:
+            payload = f"{self.model_id}\0{text}".encode("utf-8")
+        else:
+            payload = self._cache_identity.encode("utf-8") + b"\0" + text.encode("utf-8")
+        key = hashlib.sha256(payload).hexdigest()
         return self.cache_dir / f"{key}.npy"
 
     @staticmethod

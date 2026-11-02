@@ -25,6 +25,45 @@ def test_cache_flags_exist_with_sane_defaults():
     assert a.no_cache is False
 
 
+def test_cache_identity_requires_verified_revision_for_real_models():
+    mod = _script()
+    unverified = {
+        "embedding": {
+            "resolved_revision": "mutable-or-unverified",
+            "revision_verified": False,
+            "revision_status": "unknown_not_exposed_by_loader",
+        }
+    }
+    verified = {
+        "embedding": {
+            "resolved_revision": "a" * 40,
+            "revision_verified": True,
+            "revision_status": "loaded_model_revision_exposed",
+        }
+    }
+
+    assert mod._embedding_cache_identity(unverified, fake=False) is None
+    revision, config = mod._embedding_cache_identity(verified, fake=False)
+    assert revision == "a" * 40
+    assert config["normalize_embeddings"] is True
+
+
+def test_fake_model_has_a_stable_cache_identity():
+    mod = _script()
+    metadata = {
+        "embedding": {
+            "resolved_revision": "fake-word-hash-128-v1",
+            "revision_status": "not_applicable_fake_model",
+        }
+    }
+
+    revision, config = mod._embedding_cache_identity(metadata, fake=True)
+
+    assert revision == "fake-word-hash-128-v1"
+    assert config["dimension"] == 128
+    assert mod._embedding_cache_identity(metadata, fake=False) is None
+
+
 def test_main_populates_the_cache_and_still_prints_the_table(tmp_path, capsys):
     cache = tmp_path / "c"
     _script().main(_argv("--cache-dir", str(cache)))

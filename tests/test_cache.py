@@ -72,6 +72,84 @@ def test_different_model_id_does_not_share_entries(counting, tmp_path):
     assert len(counting.calls) == 2
 
 
+def test_different_model_revision_does_not_share_entries(counting, tmp_path):
+    cache_dir = tmp_path / "cache"
+    config = {"normalize_embeddings": True, "batch_size": 64}
+
+    CachedEmbedder(
+        counting, cache_dir, "model-A",
+        model_revision="revision-1", embedding_config=config,
+    )(["same text"])
+    CachedEmbedder(
+        counting, cache_dir, "model-A",
+        model_revision="revision-2", embedding_config=config,
+    )(["same text"])
+
+    assert len(counting.calls) == 2
+
+
+def test_same_revision_and_equivalent_config_share_entries(counting, tmp_path):
+    cache_dir = tmp_path / "cache"
+    first = CachedEmbedder(
+        counting, cache_dir, "model-A",
+        model_revision="revision-1",
+        embedding_config={"normalize_embeddings": True, "batch_size": 64},
+    )
+    second = CachedEmbedder(
+        counting, cache_dir, "model-A",
+        model_revision="revision-1",
+        embedding_config={"batch_size": 64, "normalize_embeddings": True},
+    )
+
+    first(["same text"])
+    second(["same text"])
+
+    assert len(counting.calls) == 1
+
+
+def test_different_embedding_config_does_not_share_entries(counting, tmp_path):
+    cache_dir = tmp_path / "cache"
+    CachedEmbedder(
+        counting, cache_dir, "model-A",
+        model_revision="revision-1",
+        embedding_config={"normalize_embeddings": True},
+    )(["same text"])
+    CachedEmbedder(
+        counting, cache_dir, "model-A",
+        model_revision="revision-1",
+        embedding_config={"normalize_embeddings": False},
+    )(["same text"])
+
+    assert len(counting.calls) == 2
+
+
+def test_embedding_config_rejects_non_json_values(counting, tmp_path):
+    with pytest.raises(ValueError, match="JSON-safe"):
+        CachedEmbedder(
+            counting, tmp_path / "cache", "model-A",
+            model_revision="revision-1",
+            embedding_config={"invalid": float("nan")},
+        )
+
+
+@pytest.mark.parametrize("bad_revision", ["", "   "])
+def test_model_revision_must_be_non_empty_when_provided(counting, tmp_path, bad_revision):
+    with pytest.raises(ValueError, match="model_revision"):
+        CachedEmbedder(
+            counting, tmp_path / "cache", "model-A",
+            model_revision=bad_revision,
+        )
+
+
+def test_embedding_config_must_be_a_mapping_when_provided(counting, tmp_path):
+    with pytest.raises(TypeError, match="mapping"):
+        CachedEmbedder(
+            counting, tmp_path / "cache", "model-A",
+            model_revision="revision-1",
+            embedding_config=["not", "a", "mapping"],
+        )
+
+
 def test_texts_are_case_and_whitespace_sensitive_keys(counting, tmp_path):
     e = make(counting, tmp_path)
     e(["Python", "python", "python "])

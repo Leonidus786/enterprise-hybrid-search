@@ -35,6 +35,46 @@ BGE_PREFIX = "Represent this sentence for searching relevant passages: "
 STRATEGIES = ["bm25", "dense", "hybrid", "hybrid_rerank"]
 
 
+def _embedding_cache_identity(model_metadata, *, fake=False):
+    """Return a safe persistent-cache identity, or None when revision is unknown."""
+    metadata = (
+        model_metadata.get("embedding")
+        if isinstance(model_metadata, dict)
+        else None
+    )
+    if not isinstance(metadata, dict):
+        return None
+
+    revision = metadata.get("resolved_revision")
+    if not isinstance(revision, str) or not revision.strip():
+        return None
+
+    if fake:
+        if metadata.get("revision_status") != "not_applicable_fake_model":
+            return None
+        config = {
+            "adapter": "fake-word-hash-128-v1",
+            "config_version": 1,
+            "dimension": 128,
+            "token_pattern": r"\w+",
+            "lowercase": True,
+            "hash": "crc32",
+        }
+    else:
+        # A mutable model name/branch is not a durable cache identity. Require
+        # the loader to have verified the actual immutable snapshot revision.
+        if metadata.get("revision_verified") is not True:
+            return None
+        config = {
+            "adapter": "hs.models.sentence_embedder",
+            "config_version": 1,
+            "normalize_embeddings": True,
+            "batch_size": 64,
+        }
+
+    return revision.strip(), config
+
+
 def build_parser():
     parser = argparse.ArgumentParser(
         description="Evaluate enterprise hybrid search strategies."
@@ -199,8 +239,13 @@ def save_results_json(
             "device": getattr(args,"reranker_device",None),
             "max_length": getattr(args,"reranker_max_length",None),
         },
-        "cache_enabled": not args.no_cache,
-        "cache_dir": None if args.no_cache else str(Path(getattr(args, "cache_dir", ".cache/embeddings"))),
+        "cache_enabled": bool(getattr(args, "cache_effective", not args.no_cache)),
+        "cache_dir": (
+            str(Path(getattr(args, "cache_dir", ".cache/embeddings")))
+            if bool(getattr(args, "cache_effective", not args.no_cache))
+            else None
+        ),
+        "cache_disabled_reason": getattr(args, "cache_disabled_reason", None),
         "bge_prefix_enabled": not (args.fake or args.no_bge_prefix),
         "query_text_included": bool(getattr(args, "include_query_text", False)),
     }
@@ -320,10 +365,31 @@ def main(argv=None):
             }),
         }
 
+    cache_enabled = False
+    cache_disabled_reason = None
     if not args.no_cache:
-        embed = CachedEmbedder(
-            embed_fn=embed, cache_dir=args.cache_dir, model_id=embedding_model_id
-        )
+        cache_identity = _embedding_cache_identity(model_metadata, fake=args.fake)
+        if cache_identity is None:
+            cache_disabled_reason = "embedding_revision_unverified"
+            print(
+                "Embedding cache disabled: the loaded model's immutable revision "
+                "could not be verified."
+            )
+        else:
+            model_revision, embedding_config = cache_identity
+            embed = CachedEmbedder(
+                embed_fn=embed,
+                cache_dir=args.cache_dir,
+                model_id=embedding_model_id,
+                model_revision=model_revision,
+                embedding_config=embedding_config,
+            )
+            cache_enabled = True
+
+    # Keep the saved run-provenance envelope honest when caching was requested
+    # but deliberately disabled because the actual model revision was unknown.
+    args.cache_effective = cache_enabled
+    args.cache_disabled_reason = cache_disabled_reason
 
     prefix = "" if args.fake or args.no_bge_prefix else BGE_PREFIX
     chunk_size = None if args.no_chunk else args.chunk_size
@@ -373,7 +439,7 @@ def main(argv=None):
     for mode, metrics in results.items():
         print(f"{mode:<18}" + "".join(f"{metrics[column]:>{width}.3f}" for column in columns))
 
-    if not args.no_cache and isinstance(embed, CachedEmbedder):
+    if cache_enabled and isinstance(embed, CachedEmbedder):
         print(f"\nEmbedding cache: {args.cache_dir}")
         print(f"Cache statistics: {embed.stats}")
     return results
