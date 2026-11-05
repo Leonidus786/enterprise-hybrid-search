@@ -1478,3 +1478,124 @@ def build_and_activate_index_snapshot(
         import shutil
 
         shutil.rmtree(stage_parent, ignore_errors=True)
+
+
+def rebuild_and_activate_index_snapshot(
+    index_root: str | Path,
+    *,
+    index_id: str,
+    documents: Iterable[Document],
+    embed_fn: Callable[[list[str]], object],
+    embedding_model_id: str,
+    embedding_model_revision: str,
+    embedding_config: Mapping[str, Any],
+    sparse_config: Mapping[str, Any],
+    chunk_size: int | None = 200,
+    chunk_overlap: int = 40,
+    created_at_utc: str | None = None,
+    expected_embedding: Mapping[str, Any] | None = None,
+) -> LoadedIndexSnapshot:
+    """Rebuild and activate a complete index in canonical document order.
+
+    Documents are materialized once, validated, sorted by doc_id and chunked
+    from scratch. The existing staged builder owns persistence, validation
+    and atomic activation.
+    """
+    normalized_index_id = _validate_index_id(index_id)
+
+    if not callable(embed_fn):
+        raise TypeError("embed_fn must be callable")
+
+    if (
+        isinstance(chunk_overlap, bool)
+        or not isinstance(chunk_overlap, int)
+        or chunk_overlap < 0
+    ):
+        raise ValueError("chunk_overlap must be a non-negative integer")
+
+    if chunk_size is None:
+        if chunk_overlap != 0:
+            raise ValueError(
+                "chunk_overlap must be 0 when chunk_size is None"
+            )
+    else:
+        if (
+            isinstance(chunk_size, bool)
+            or not isinstance(chunk_size, int)
+            or chunk_size <= 0
+        ):
+            raise ValueError(
+                "chunk_size must be a positive integer or None"
+            )
+
+        if chunk_overlap >= chunk_size:
+            raise ValueError(
+                "chunk_overlap must be smaller than chunk_size"
+            )
+
+    # Materialize the input iterable exactly once.
+    document_rows = list(documents)
+
+    if not document_rows:
+        raise ValueError(
+            "cannot build a persistent index from an empty document set"
+        )
+
+    if any(
+        not isinstance(document, Document)
+        for document in document_rows
+    ):
+        raise TypeError(
+            "documents must contain only Document instances"
+        )
+
+    # Reject duplicate identities before generating chunks or embeddings.
+    seen_doc_ids: set[str] = set()
+
+    for document in document_rows:
+        if document.doc_id in seen_doc_ids:
+            raise ValueError(
+                f"duplicate document ID: {document.doc_id!r}"
+            )
+        seen_doc_ids.add(document.doc_id)
+
+    # Canonical order makes the complete rebuild independent of input order.
+    document_rows.sort(key=lambda document: document.doc_id)
+
+    # Always regenerate the complete chunk collection.
+    chunk_rows: list[Chunk] = []
+
+    for document in document_rows:
+        chunk_rows.extend(
+            chunk_text(
+                document.doc_id,
+                document.text,
+                size=chunk_size,
+                overlap=chunk_overlap,
+                source=document.source,
+                title=document.title,
+                metadata=document.metadata,
+                document_revision_sha256=document.revision_sha256,
+            )
+        )
+
+    # Empty documents are retained, but an index needs searchable chunks.
+    if not chunk_rows:
+        raise ValueError(
+            "cannot build a persistent index without searchable chunks"
+        )
+
+    return build_and_activate_index_snapshot(
+        index_root,
+        index_id=normalized_index_id,
+        documents=document_rows,
+        chunks=chunk_rows,
+        embed_fn=embed_fn,
+        embedding_model_id=embedding_model_id,
+        embedding_model_revision=embedding_model_revision,
+        embedding_config=embedding_config,
+        sparse_config=sparse_config,
+        chunking_config=None,
+        created_at_utc=created_at_utc,
+        expected_embedding=expected_embedding,
+    )
