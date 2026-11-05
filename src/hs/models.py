@@ -149,6 +149,14 @@ def sentence_embedder(name="BAAI/bge-small-en-v1.5", revision=None):
             texts, normalize_embeddings=True, batch_size=64, show_progress_bar=True
         )
 
+    # Keep this declaration beside the adapter implementation. Snapshot loading
+    # compares it with the manifest instead of trusting caller-supplied metadata.
+    embed.embedding_config = {
+        "adapter": "hs.models.sentence_embedder",
+        "config_version": 1,
+        "normalize_embeddings": True,
+        "batch_size": 64,
+    }
     return _attach_metadata(
         embed, model_id=name, requested_revision=revision, model=model
     )

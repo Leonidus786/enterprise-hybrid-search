@@ -14,6 +14,7 @@ import json
 import os
 from pathlib import Path
 import re
+import tempfile
 from typing import Any
 
 import numpy as np
@@ -67,7 +68,8 @@ def _json_mapping(value: object, name: str) -> dict[str, Any]:
         # canonical_json rejects NaN/Infinity and non-JSON Python objects.
         return json.loads(canonical_json(dict(value)))
     except (TypeError, ValueError) as exc:
-        raise ValueError(f"{name} must contain JSON-compatible values") from exc
+        raise ValueError(
+            f"{name} must contain JSON-compatible values") from exc
 
 
 def document_to_record(document: Document) -> dict[str, Any]:
@@ -174,7 +176,8 @@ def encode_jsonl(records: Iterable[Mapping[str, Any]]) -> bytes:
         try:
             encoded.append(canonical_json(dict(record)))
         except (TypeError, ValueError) as exc:
-            raise ValueError(f"JSONL record #{index} is not JSON-compatible") from exc
+            raise ValueError(
+                f"JSONL record #{index} is not JSON-compatible") from exc
     if not encoded:
         return b""
     return ("\n".join(encoded) + "\n").encode("utf-8")
@@ -194,7 +197,8 @@ def _object_without_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, An
 
 
 def _reject_json_constant(value: str) -> None:
-    raise ValueError(f"non-standard JSON numeric constant is not allowed: {value}")
+    raise ValueError(
+        f"non-standard JSON numeric constant is not allowed: {value}")
 
 
 def _decode_json_object(line: str, *, context: str) -> dict[str, Any]:
@@ -215,7 +219,8 @@ def _decode_json_object(line: str, *, context: str) -> dict[str, Any]:
     try:
         canonical = canonical_json(value)
     except (TypeError, ValueError) as exc:
-        raise ValueError(f"JSON value in {context} is not JSON-compatible") from exc
+        raise ValueError(
+            f"JSON value in {context} is not JSON-compatible") from exc
     if canonical != line:
         raise ValueError(f"JSON value in {context} is not canonically encoded")
     return value
@@ -245,12 +250,15 @@ def decode_jsonl(payload: bytes | str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for line_number, line in enumerate(content[:-1].split("\n"), start=1):
         if line.endswith("\r"):
-            raise ValueError("JSONL payload must use LF, not CRLF, line endings")
+            raise ValueError(
+                "JSONL payload must use LF, not CRLF, line endings")
         if not line.strip():
-            raise ValueError(f"JSONL contains a blank line at line {line_number}")
+            raise ValueError(
+                f"JSONL contains a blank line at line {line_number}")
         try:
             rows.append(
-                _decode_json_object(line, context=f"JSONL record at line {line_number}")
+                _decode_json_object(
+                    line, context=f"JSONL record at line {line_number}")
             )
         except ValueError as exc:
             raise ValueError(
@@ -315,7 +323,8 @@ def _validate_artifact_record(
             result["record_count"], f"artifacts.{name}.record_count"
         )
         if count != expected_record_count:
-            raise ValueError(f"artifacts.{name}.record_count does not match corpus")
+            raise ValueError(
+                f"artifacts.{name}.record_count does not match corpus")
     elif expected_shape is not None:
         if set(result) != {"sha256", "size_bytes", "shape", "dtype"}:
             raise ValueError(f"artifacts.{name} has an invalid schema")
@@ -325,9 +334,11 @@ def _validate_artifact_record(
             or len(shape) != 2
             or any(isinstance(v, bool) or not isinstance(v, int) for v in shape)
         ):
-            raise ValueError(f"artifacts.{name}.shape must be a two-integer list")
+            raise ValueError(
+                f"artifacts.{name}.shape must be a two-integer list")
         if tuple(shape) != expected_shape:
-            raise ValueError(f"artifacts.{name}.shape does not match vectors metadata")
+            raise ValueError(
+                f"artifacts.{name}.shape does not match vectors metadata")
         if result["dtype"] != "float32":
             raise ValueError(f"artifacts.{name}.dtype must be float32")
     return result
@@ -420,7 +431,8 @@ def validate_manifest(
     try:
         parsed_time = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
     except ValueError as exc:
-        raise ValueError("created_at_utc must be an ISO-8601 timestamp") from exc
+        raise ValueError(
+            "created_at_utc must be an ISO-8601 timestamp") from exc
     if parsed_time.tzinfo is None or parsed_time.utcoffset() != timedelta(0):
         raise ValueError("created_at_utc must include a UTC timezone")
 
@@ -429,8 +441,10 @@ def validate_manifest(
         "document_count", "chunk_count", "fingerprint_sha256"
     }:
         raise ValueError("manifest.corpus has an invalid schema")
-    document_count = _require_int(corpus["document_count"], "corpus.document_count", minimum=1)
-    chunk_count = _require_int(corpus["chunk_count"], "corpus.chunk_count", minimum=1)
+    document_count = _require_int(
+        corpus["document_count"], "corpus.document_count", minimum=1)
+    chunk_count = _require_int(
+        corpus["chunk_count"], "corpus.chunk_count", minimum=1)
     _require_sha256(corpus["fingerprint_sha256"], "corpus.fingerprint_sha256")
 
     embedding = manifest["embedding"]
@@ -442,7 +456,8 @@ def validate_manifest(
         embedding["model_revision"], "embedding.model_revision"
     )
     if not _REVISION_RE.fullmatch(model_revision):
-        raise ValueError("embedding.model_revision must be an immutable hexadecimal commit")
+        raise ValueError(
+            "embedding.model_revision must be an immutable hexadecimal commit")
     normalized_embedding = {
         "model_id": _require_nonempty_string(embedding["model_id"], "embedding.model_id"),
         "model_revision": model_revision,
@@ -453,7 +468,8 @@ def validate_manifest(
             raise ValueError("expected_embedding must be a JSON object")
         normalized_expected = {
             "model_id": _require_nonempty_string(
-                expected_embedding.get("model_id"), "expected_embedding.model_id"
+                expected_embedding.get(
+                    "model_id"), "expected_embedding.model_id"
             ),
             "model_revision": _require_nonempty_string(
                 expected_embedding.get("model_revision"),
@@ -464,7 +480,8 @@ def validate_manifest(
             ),
         }
         if canonical_json(normalized_embedding) != canonical_json(normalized_expected):
-            raise ValueError("index embedding identity is incompatible with requested model")
+            raise ValueError(
+                "index embedding identity is incompatible with requested model")
 
     vectors = manifest["vectors"]
     if not isinstance(vectors, Mapping) or set(vectors) != {
@@ -472,7 +489,8 @@ def validate_manifest(
     }:
         raise ValueError("manifest.vectors has an invalid schema")
     rows = _require_int(vectors["rows"], "vectors.rows", minimum=1)
-    dimension = _require_int(vectors["dimension"], "vectors.dimension", minimum=1)
+    dimension = _require_int(
+        vectors["dimension"], "vectors.dimension", minimum=1)
     if rows != chunk_count:
         raise ValueError("vectors.rows must equal corpus.chunk_count")
     if vectors["dtype"] != "float32":
@@ -483,11 +501,13 @@ def validate_manifest(
     chunking = _json_mapping(manifest["chunking"], "chunking")
     sparse = _json_mapping(manifest["sparse"], "sparse")
     if not chunking or not sparse:
-        raise ValueError("chunking and sparse configurations must not be empty")
+        raise ValueError(
+            "chunking and sparse configurations must not be empty")
 
     artifacts = manifest["artifacts"]
     if not isinstance(artifacts, Mapping) or set(artifacts) != set(REQUIRED_ARTIFACTS):
-        raise ValueError("manifest.artifacts must contain exactly the required artifacts")
+        raise ValueError(
+            "manifest.artifacts must contain exactly the required artifacts")
     normalized_artifacts = {
         DOCUMENTS_ARTIFACT: _validate_artifact_record(
             artifacts[DOCUMENTS_ARTIFACT], DOCUMENTS_ARTIFACT,
@@ -531,15 +551,18 @@ def validate_manifest(
 def _index_chunking_config(chunks: list[Chunk]) -> dict[str, Any]:
     """Return the one chunking configuration represented by all chunks."""
     if not chunks:
-        raise ValueError("cannot build a persistent index without searchable chunks")
+        raise ValueError(
+            "cannot build a persistent index without searchable chunks")
 
     configs = [normalize_metadata(chunk.chunking_config) for chunk in chunks]
     if any(not config for config in configs):
-        raise ValueError("every persisted chunk must declare its chunking_config")
+        raise ValueError(
+            "every persisted chunk must declare its chunking_config")
 
     encoded = {canonical_json(config) for config in configs}
     if len(encoded) != 1:
-        raise ValueError("all chunks in one index must use the same chunking_config")
+        raise ValueError(
+            "all chunks in one index must use the same chunking_config")
     return configs[0]
 
 
@@ -581,9 +604,11 @@ def _validate_build_corpus(
 ) -> dict[str, Any]:
     """Validate document/chunk identity and reproduce the declared chunk set."""
     if not documents:
-        raise ValueError("cannot build a persistent index from an empty document set")
+        raise ValueError(
+            "cannot build a persistent index from an empty document set")
     if not chunks:
-        raise ValueError("cannot build a persistent index without searchable chunks")
+        raise ValueError(
+            "cannot build a persistent index without searchable chunks")
     if any(not isinstance(document, Document) for document in documents):
         raise TypeError("documents must contain only Document instances")
     if any(not isinstance(chunk, Chunk) for chunk in chunks):
@@ -614,7 +639,8 @@ def _validate_build_corpus(
     if chunking_config is not None:
         supplied_config = _json_mapping(chunking_config, "chunking_config")
         if canonical_json(supplied_config) != canonical_json(inferred_config):
-            raise ValueError("chunking_config does not match the persisted chunks")
+            raise ValueError(
+                "chunking_config does not match the persisted chunks")
 
     size, overlap = _chunking_parameters(inferred_config)
 
@@ -639,7 +665,8 @@ def _validate_build_corpus(
     expected_records = [
         canonical_json(chunk_to_record(chunk)) for chunk in expected_chunks
     ]
-    actual_records = [canonical_json(chunk_to_record(chunk)) for chunk in chunks]
+    actual_records = [canonical_json(chunk_to_record(chunk))
+                      for chunk in chunks]
     if actual_records != expected_records:
         raise ValueError(
             "chunks do not match the ordered documents and declared "
@@ -679,7 +706,8 @@ def _normalize_embedding_matrix(raw: object, *, expected_rows: int) -> np.ndarra
 
     normalized = matrix / np.where(norms == 0, 1, norms)
     if not np.isfinite(normalized).all():
-        raise ValueError("normalized embeddings must contain only finite values")
+        raise ValueError(
+            "normalized embeddings must contain only finite values")
     return np.ascontiguousarray(normalized, dtype=np.float32)
 
 
@@ -761,13 +789,15 @@ def build_index_snapshot(
 
     target = Path(output_dir)
     if target.exists() or target.is_symlink():
-        raise FileExistsError(f"index snapshot destination already exists: {target}")
+        raise FileExistsError(
+            f"index snapshot destination already exists: {target}")
 
     texts = [chunk.text for chunk in chunk_rows]
     try:
         raw_vectors = embed_fn(texts)
     except Exception as exc:
-        raise RuntimeError("embedding generation failed while building index") from exc
+        raise RuntimeError(
+            "embedding generation failed while building index") from exc
     vectors = _normalize_embedding_matrix(
         raw_vectors, expected_rows=len(chunk_rows)
     )
@@ -775,7 +805,8 @@ def build_index_snapshot(
     document_payload = encode_jsonl(
         document_to_record(document) for document in document_rows
     )
-    chunk_payload = encode_jsonl(chunk_to_record(chunk) for chunk in chunk_rows)
+    chunk_payload = encode_jsonl(chunk_to_record(chunk)
+                                 for chunk in chunk_rows)
 
     target.parent.mkdir(parents=True, exist_ok=True)
     target.mkdir(exist_ok=False)
@@ -844,7 +875,8 @@ class LoadedIndexSnapshot:
 
 def _read_manifest_file(path: Path) -> dict[str, Any]:
     if path.is_symlink() or not path.is_file():
-        raise FileNotFoundError(f"missing or unsafe index manifest: {path.name}")
+        raise FileNotFoundError(
+            f"missing or unsafe index manifest: {path.name}")
     try:
         if path.stat().st_size > 1024 * 1024:
             raise ValueError("manifest.json exceeds the 1 MiB safety limit")
@@ -865,7 +897,8 @@ def _read_manifest_file(path: Path) -> dict[str, Any]:
 
 def _verify_snapshot_layout(snapshot_dir: Path) -> None:
     if snapshot_dir.is_symlink() or not snapshot_dir.is_dir():
-        raise FileNotFoundError("index snapshot directory does not exist or is unsafe")
+        raise FileNotFoundError(
+            "index snapshot directory does not exist or is unsafe")
 
     expected_names = {"manifest.json", *REQUIRED_ARTIFACTS}
     try:
@@ -881,7 +914,8 @@ def _verify_snapshot_layout(snapshot_dir: Path) -> None:
         )
     for entry in entries:
         if entry.is_symlink() or not entry.is_file():
-            raise ValueError(f"snapshot artifact must be a regular file: {entry.name}")
+            raise ValueError(
+                f"snapshot artifact must be a regular file: {entry.name}")
 
 
 def _verify_artifact_bytes(snapshot_dir: Path, manifest: Mapping[str, Any]) -> None:
@@ -891,7 +925,8 @@ def _verify_artifact_bytes(snapshot_dir: Path, manifest: Mapping[str, Any]) -> N
         try:
             actual = artifact_metadata(path)
         except OSError as exc:
-            raise OSError(f"cannot read snapshot artifact {name}: {exc}") from exc
+            raise OSError(
+                f"cannot read snapshot artifact {name}: {exc}") from exc
         if actual["size_bytes"] != expected["size_bytes"]:
             raise ValueError(f"artifact size mismatch: {name}")
         if actual["sha256"] != expected["sha256"]:
@@ -910,13 +945,15 @@ def _read_jsonl_records(path: Path) -> list[dict[str, Any]]:
                     )
                 raw = line[:-1]
                 if raw.endswith("\r"):
-                    raise ValueError(f"{path.name} must use LF, not CRLF, line endings")
+                    raise ValueError(
+                        f"{path.name} must use LF, not CRLF, line endings")
                 if not raw.strip():
                     raise ValueError(
                         f"{path.name} contains a blank line at line {line_number}"
                     )
                 records.append(
-                    _decode_json_object(raw, context=f"{path.name} line {line_number}")
+                    _decode_json_object(
+                        raw, context=f"{path.name} line {line_number}")
                 )
     except UnicodeDecodeError as exc:
         raise ValueError(f"{path.name} must be valid UTF-8") from exc
@@ -947,7 +984,8 @@ def _validate_loaded_vectors(path: Path, manifest: Mapping[str, Any]) -> np.ndar
     with np.errstate(over="ignore", under="ignore", invalid="ignore"):
         norms = np.linalg.norm(vectors, axis=1)
     if not np.isfinite(norms).all():
-        raise ValueError("vectors.npy contains vector norms that overflow float32")
+        raise ValueError(
+            "vectors.npy contains vector norms that overflow float32")
     nonzero_rows = np.any(vectors != 0, axis=1)
     if np.any(nonzero_rows & (norms == 0)):
         raise ValueError("vectors.npy contains non-zero rows with zero norm")
@@ -975,18 +1013,21 @@ def load_index_snapshot(
     _verify_snapshot_layout(path)
     manifest = _read_manifest_file(path / "manifest.json")
     if expected_embedding is not None:
-        manifest = validate_manifest(manifest, expected_embedding=expected_embedding)
+        manifest = validate_manifest(
+            manifest, expected_embedding=expected_embedding)
 
     _verify_artifact_bytes(path, manifest)
 
     document_records = _read_jsonl_records(path / DOCUMENTS_ARTIFACT)
     chunk_records = _read_jsonl_records(path / CHUNKS_ARTIFACT)
     if len(document_records) != manifest["corpus"]["document_count"]:
-        raise ValueError("documents.jsonl record count does not match manifest")
+        raise ValueError(
+            "documents.jsonl record count does not match manifest")
     if len(chunk_records) != manifest["corpus"]["chunk_count"]:
         raise ValueError("chunks.jsonl record count does not match manifest")
 
-    documents = tuple(document_from_record(record) for record in document_records)
+    documents = tuple(document_from_record(record)
+                      for record in document_records)
     chunks = tuple(chunk_from_record(record) for record in chunk_records)
     _validate_build_corpus(
         list(documents),
@@ -1006,3 +1047,434 @@ def load_index_snapshot(
         chunks=chunks,
         vectors=vectors,
     )
+
+
+_CURRENT_FORMAT = "enterprise-hybrid-search-current"
+_CURRENT_SCHEMA_VERSION = 1
+_CURRENT_ARTIFACT = "CURRENT.json"
+_CURRENT_MAX_BYTES = 64 * 1024
+
+
+def _validate_index_id(value: object, name: str = "index_id") -> str:
+    index_id = _require_nonempty_string(value, name)
+    if not _INDEX_ID_RE.fullmatch(index_id):
+        raise ValueError(f"{name} contains unsafe path characters")
+
+    if index_id.endswith("."):
+        raise ValueError(f"{name} must not end with a period")
+
+    device_name = index_id.split(".", 1)[0].upper()
+    if device_name in {"CON", "PRN", "AUX", "NUL"} or re.fullmatch(
+        r"(?:COM|LPT)[1-9]", device_name
+    ):
+        raise ValueError(f"{name} is a reserved filesystem name")
+    return index_id
+
+
+def _index_directories(index_root: str | Path) -> tuple[Path, Path, Path]:
+    """Create and return the index root, staging and versions directories."""
+    root = Path(index_root)
+    if root.is_symlink():
+        raise ValueError("index_root must not be a symbolic link")
+    root.mkdir(parents=True, exist_ok=True)
+    if not root.is_dir():
+        raise ValueError("index_root must be a directory")
+
+    staging = root / "staging"
+    versions = root / "versions"
+    for directory, label in ((staging, "staging"), (versions, "versions")):
+        if directory.is_symlink():
+            raise ValueError(
+                f"index {label} directory must not be a symbolic link")
+        directory.mkdir(exist_ok=True)
+        if not directory.is_dir():
+            raise ValueError(f"index {label} path must be a directory")
+    return root, staging, versions
+
+
+def _validate_current_pointer(pointer: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate the strict CURRENT.json contract and return a detached mapping."""
+    if not isinstance(pointer, Mapping):
+        raise ValueError("CURRENT.json must contain a JSON object")
+    required = {
+        "format",
+        "schema_version",
+        "index_id",
+        "manifest_sha256",
+        "previous_index_id",
+        "previous_manifest_sha256",
+    }
+    if set(pointer) != required:
+        raise ValueError("CURRENT.json has missing or unsupported fields")
+    if pointer["format"] != _CURRENT_FORMAT:
+        raise ValueError("unsupported CURRENT.json format")
+    version = pointer["schema_version"]
+    if (
+        isinstance(version, bool)
+        or not isinstance(version, int)
+        or version != _CURRENT_SCHEMA_VERSION
+    ):
+        raise ValueError("unsupported CURRENT.json schema version")
+
+    index_id = _validate_index_id(pointer["index_id"], "CURRENT.json index_id")
+    manifest_sha256 = _require_sha256(
+        pointer["manifest_sha256"], "CURRENT.json manifest_sha256"
+    )
+    previous_index_id = pointer["previous_index_id"]
+    previous_manifest_sha256 = pointer["previous_manifest_sha256"]
+    if previous_index_id is None and previous_manifest_sha256 is None:
+        pass
+    elif previous_index_id is None or previous_manifest_sha256 is None:
+        raise ValueError("CURRENT.json previous index identity is incomplete")
+    else:
+        previous_index_id = _validate_index_id(
+            previous_index_id, "CURRENT.json previous_index_id"
+        )
+        previous_manifest_sha256 = _require_sha256(
+            previous_manifest_sha256,
+            "CURRENT.json previous_manifest_sha256",
+        )
+        if previous_index_id == index_id:
+            raise ValueError(
+                "CURRENT.json cannot point to itself as the previous index")
+
+    return {
+        "format": _CURRENT_FORMAT,
+        "schema_version": _CURRENT_SCHEMA_VERSION,
+        "index_id": index_id,
+        "manifest_sha256": manifest_sha256,
+        "previous_index_id": previous_index_id,
+        "previous_manifest_sha256": previous_manifest_sha256,
+    }
+
+
+def _read_current_pointer(index_root: str | Path) -> dict[str, Any] | None:
+    """Read CURRENT.json strictly; return None only when it is truly absent."""
+    root = Path(index_root)
+    if root.is_symlink():
+        raise ValueError("index_root must not be a symbolic link")
+    if root.exists() and not root.is_dir():
+        raise ValueError("index_root must be a directory")
+    path = root / _CURRENT_ARTIFACT
+    if path.is_symlink():
+        raise ValueError("CURRENT.json must not be a symbolic link")
+    if not path.exists():
+        return None
+    if not path.is_file():
+        raise ValueError("CURRENT.json must be a regular file")
+    try:
+        if path.stat().st_size > _CURRENT_MAX_BYTES:
+            raise ValueError("CURRENT.json exceeds the 64 KiB safety limit")
+        payload = path.read_bytes()
+    except OSError as exc:
+        raise OSError(f"cannot read CURRENT.json: {exc}") from exc
+    try:
+        content = payload.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError("CURRENT.json must be valid UTF-8") from exc
+    if not content.endswith("\n"):
+        raise ValueError("CURRENT.json must end with a newline")
+    if content.endswith("\r\n"):
+        raise ValueError("CURRENT.json must use LF, not CRLF, line endings")
+    record = _decode_json_object(content[:-1], context="CURRENT.json")
+    return _validate_current_pointer(record)
+
+
+def _write_current_pointer(index_root: str | Path, pointer: Mapping[str, Any]) -> None:
+    """Flush a temporary pointer and atomically replace CURRENT.json."""
+    root = Path(index_root)
+    normalized = _validate_current_pointer(pointer)
+    payload = (canonical_json(normalized) + "\n").encode("utf-8")
+    fd: int | None = None
+    temporary_path: Path | None = None
+    try:
+        fd, temporary_name = tempfile.mkstemp(
+            prefix=".CURRENT.", suffix=".tmp", dir=root
+        )
+        temporary_path = Path(temporary_name)
+        with os.fdopen(fd, "wb") as handle:
+            fd = None
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, root / _CURRENT_ARTIFACT)
+    except Exception:
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        if temporary_path is not None:
+            try:
+                temporary_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
+
+
+def _load_pointer_target(
+    index_root: str | Path,
+    pointer: Mapping[str, Any],
+    *,
+    expected_embedding: Mapping[str, Any] | None = None,
+) -> LoadedIndexSnapshot:
+    """Load the referenced immutable version and verify its manifest identity."""
+    root = Path(index_root)
+    versions = root / "versions"
+    if versions.is_symlink() or not versions.is_dir():
+        raise FileNotFoundError(
+            "index versions directory does not exist or is unsafe")
+    index_id = _validate_index_id(pointer["index_id"])
+    version_dir = versions / index_id
+    if version_dir.is_symlink() or not version_dir.is_dir():
+        raise FileNotFoundError(
+            f"active index version is missing or unsafe: {index_id}")
+    manifest_path = version_dir / "manifest.json"
+    if manifest_path.is_symlink() or not manifest_path.is_file():
+        raise FileNotFoundError("active index manifest is missing or unsafe")
+    actual_manifest_sha256 = artifact_metadata(manifest_path)["sha256"]
+    if actual_manifest_sha256 != pointer["manifest_sha256"]:
+        raise ValueError(
+            "CURRENT.json manifest checksum does not match active snapshot")
+    loaded = load_index_snapshot(
+        version_dir, expected_embedding=expected_embedding)
+    if loaded.manifest["index_id"] != index_id:
+        raise ValueError(
+            "CURRENT.json index_id does not match snapshot manifest")
+    return loaded
+
+
+def load_current_index_snapshot(
+    index_root: str | Path,
+    *,
+    expected_embedding: Mapping[str, Any] | None = None,
+) -> LoadedIndexSnapshot:
+    """Load the active version only when CURRENT.json and its snapshot agree."""
+    pointer = _read_current_pointer(index_root)
+    if pointer is None:
+        raise FileNotFoundError(
+            "CURRENT.json does not exist; no index is active")
+    return _load_pointer_target(
+        index_root, pointer, expected_embedding=expected_embedding
+    )
+
+
+def activate_index_snapshot(
+    index_root: str | Path,
+    staged_snapshot_dir: str | Path,
+    *,
+    expected_embedding: Mapping[str, Any] | None = None,
+) -> LoadedIndexSnapshot:
+    """Validate and promote one staged snapshot, then atomically switch CURRENT.
+
+    ``staged_snapshot_dir`` must be a directory below ``index_root/staging``.
+    It is validated before promotion. Snapshot versions are immutable: an
+    existing ``versions/<index_id>`` directory is never overwritten.
+
+    The pointer is written to a sibling temporary file, flushed, and replaced
+    with ``os.replace``. If pointer replacement fails, the previous CURRENT.json
+    remains untouched; the newly promoted version is retained but inactive.
+
+    Activation is a single-writer operation. Concurrent writers must be
+    serialized by the caller; this file-based implementation does not provide
+    a cross-process lock.
+    """
+    root, staging, versions = _index_directories(index_root)
+    staged_path = Path(staged_snapshot_dir)
+    if staged_path.is_symlink() or not staged_path.is_dir():
+        raise FileNotFoundError(
+            "staged snapshot directory does not exist or is unsafe")
+
+    staging_resolved = staging.resolve(strict=True)
+    staged_resolved = staged_path.resolve(strict=True)
+    try:
+        staged_resolved.relative_to(staging_resolved)
+    except ValueError as exc:
+        raise ValueError(
+            "staged snapshot must be located inside index_root/staging") from exc
+    if staged_resolved == staging_resolved:
+        raise ValueError(
+            "staged snapshot must be a child of the staging directory")
+
+    # Validate every artifact before any version promotion or active-pointer change.
+    staged_snapshot = load_index_snapshot(
+        staged_resolved, expected_embedding=expected_embedding
+    )
+    index_id = _validate_index_id(staged_snapshot.manifest["index_id"])
+    version_dir = versions / index_id
+    if version_dir.exists() or version_dir.is_symlink():
+        raise FileExistsError(
+            f"immutable index version already exists: {index_id}")
+
+    current_pointer = _read_current_pointer(root)
+    previous_index_id: str | None = None
+    previous_manifest_sha256: str | None = None
+    if current_pointer is not None:
+        # Do not replace an invalid active pointer and silently lose the last
+        # known-good version from the rollback chain.
+        current_snapshot = _load_pointer_target(root, current_pointer)
+        previous_index_id = current_snapshot.manifest["index_id"]
+        previous_manifest_sha256 = current_pointer["manifest_sha256"]
+
+    # Staging and versions are siblings under index_root, so this rename stays
+    # on the same filesystem. Destination is guaranteed not to exist above.
+    os.replace(staged_resolved, version_dir)
+
+    # Re-read from the immutable destination before publishing the pointer.
+    promoted_snapshot = load_index_snapshot(
+        version_dir, expected_embedding=expected_embedding
+    )
+    manifest_sha256 = artifact_metadata(
+        version_dir / "manifest.json")["sha256"]
+    pointer = {
+        "format": _CURRENT_FORMAT,
+        "schema_version": _CURRENT_SCHEMA_VERSION,
+        "index_id": index_id,
+        "manifest_sha256": manifest_sha256,
+        "previous_index_id": previous_index_id,
+        "previous_manifest_sha256": previous_manifest_sha256,
+    }
+    _write_current_pointer(root, pointer)
+
+    # The containing temporary staging directory may now be empty. Removing it
+    # is best-effort and must not turn a successful activation into a failure.
+    try:
+        staged_resolved.parent.rmdir()
+    except OSError:
+        pass
+    return promoted_snapshot
+
+
+def rollback_index_snapshot(
+    index_root: str | Path,
+    *,
+    index_id: str | None = None,
+    expected_embedding: Mapping[str, Any] | None = None,
+) -> LoadedIndexSnapshot:
+    """Reactivate the previous (or explicitly selected) retained index version.
+
+    With no ``index_id``, the previous version recorded in CURRENT.json is
+    selected. Supplying ``index_id`` permits an operator to reactivate any
+    retained immutable version, including a version promoted before a failed
+    pointer switch.
+    """
+    root = Path(index_root)
+    if root.is_symlink() or not root.is_dir():
+        raise FileNotFoundError("index_root does not exist or is unsafe")
+    versions = root / "versions"
+    if versions.is_symlink() or not versions.is_dir():
+        raise FileNotFoundError(
+            "index versions directory does not exist or is unsafe")
+
+    current_pointer = _read_current_pointer(root)
+    target_id = index_id
+    if target_id is None:
+        if current_pointer is None or current_pointer["previous_index_id"] is None:
+            raise ValueError(
+                "no previous index version is available for rollback")
+        target_id = current_pointer["previous_index_id"]
+    target_id = _validate_index_id(target_id)
+    if current_pointer is not None and target_id == current_pointer["index_id"]:
+        raise ValueError("target index version is already active")
+
+    version_dir = versions / target_id
+    if version_dir.is_symlink() or not version_dir.is_dir():
+        raise FileNotFoundError(
+            f"retained index version does not exist: {target_id}")
+    target_snapshot = load_index_snapshot(
+        version_dir, expected_embedding=expected_embedding
+    )
+    if target_snapshot.manifest["index_id"] != target_id:
+        raise ValueError(
+            "requested index_id does not match retained snapshot manifest")
+    target_manifest_sha256 = artifact_metadata(
+        version_dir / "manifest.json")["sha256"]
+
+    if (
+        current_pointer is not None
+        and target_id == current_pointer["previous_index_id"]
+        and target_manifest_sha256 != current_pointer["previous_manifest_sha256"]
+    ):
+        raise ValueError(
+            "previous index manifest checksum does not match CURRENT.json")
+
+    previous_index_id = None
+    previous_manifest_sha256 = None
+    if current_pointer is not None:
+        # Rollback is a recovery path: do not require the currently active
+        # snapshot to be healthy before switching away from it. Preserve its
+        # pointer identity as the new previous target, even when its artifacts
+        # are corrupt or missing. The selected rollback target was validated
+        # above and is the only snapshot that must be loadable here.
+        previous_index_id = current_pointer["index_id"]
+        previous_manifest_sha256 = current_pointer["manifest_sha256"]
+
+    _write_current_pointer(
+        root,
+        {
+            "format": _CURRENT_FORMAT,
+            "schema_version": _CURRENT_SCHEMA_VERSION,
+            "index_id": target_id,
+            "manifest_sha256": target_manifest_sha256,
+            "previous_index_id": previous_index_id,
+            "previous_manifest_sha256": previous_manifest_sha256,
+        },
+    )
+    return target_snapshot
+
+
+def build_and_activate_index_snapshot(
+    index_root: str | Path,
+    *,
+    index_id: str,
+    documents: Iterable[Document],
+    chunks: Iterable[Chunk],
+    embed_fn: Callable[[list[str]], object],
+    embedding_model_id: str,
+    embedding_model_revision: str,
+    embedding_config: Mapping[str, Any],
+    sparse_config: Mapping[str, Any],
+    chunking_config: Mapping[str, Any] | None = None,
+    created_at_utc: str | None = None,
+    expected_embedding: Mapping[str, Any] | None = None,
+) -> LoadedIndexSnapshot:
+    """Build in staging, validate, promote and activate a new immutable version.
+
+    A unique temporary directory under ``index_root/staging`` isolates each
+    build. The staging parent is removed best-effort after success or failure;
+    a hard process/host stop may leave an inactive staging orphan, never a
+    CURRENT.json pointer to an incomplete snapshot.
+    """
+    normalized_index_id = _validate_index_id(index_id)
+    root, staging, versions = _index_directories(index_root)
+    destination = versions / normalized_index_id
+    if destination.exists() or destination.is_symlink():
+        raise FileExistsError(
+            f"immutable index version already exists: {normalized_index_id}")
+    stage_parent = Path(
+        tempfile.mkdtemp(prefix=f".{normalized_index_id}.", dir=staging)
+    )
+    staged_snapshot_dir = stage_parent / "snapshot"
+    try:
+        build_index_snapshot(
+            staged_snapshot_dir,
+            index_id=normalized_index_id,
+            documents=documents,
+            chunks=chunks,
+            embed_fn=embed_fn,
+            embedding_model_id=embedding_model_id,
+            embedding_model_revision=embedding_model_revision,
+            embedding_config=embedding_config,
+            sparse_config=sparse_config,
+            chunking_config=chunking_config,
+            created_at_utc=created_at_utc,
+        )
+        return activate_index_snapshot(
+            root,
+            staged_snapshot_dir,
+            expected_embedding=expected_embedding,
+        )
+    finally:
+        import shutil
+
+        shutil.rmtree(stage_parent, ignore_errors=True)

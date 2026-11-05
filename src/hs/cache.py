@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import tempfile
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
@@ -89,6 +90,50 @@ class CachedEmbedder:
     def stats(self) -> dict[str, int]:
         """Return cache hit/miss counts accumulated across calls."""
         return {"hits": self._hits, "misses": self._misses}
+
+    @property
+    def verified_embedding_identity(self) -> dict[str, object] | None:
+        """Expose identity only when the wrapped model and cache config agree.
+
+        Constructor arguments are declarations. Require verified model-loader
+        metadata and a matching configuration attached by the actual embedder.
+        """
+        metadata = getattr(self.embed_fn, "model_metadata", None)
+        actual_config = getattr(self.embed_fn, "embedding_config", None)
+        if not isinstance(metadata, Mapping):
+            return None
+        if metadata.get("revision_verified") is not True:
+            return None
+        if metadata.get("model_id") != self.model_id:
+            return None
+        revision = metadata.get("resolved_revision")
+        if (
+            not isinstance(revision, str)
+            or not re.fullmatch(r"[0-9a-fA-F]{40,64}", revision)
+            or self.model_revision is None
+            or revision.lower() != self.model_revision.lower()
+        ):
+            return None
+        if not isinstance(actual_config, Mapping) or self.embedding_config is None:
+            return None
+        try:
+            actual_json = json.dumps(
+                dict(actual_config), sort_keys=True, ensure_ascii=False,
+                separators=(",", ":"), allow_nan=False,
+            )
+            declared_json = json.dumps(
+                self.embedding_config, sort_keys=True, ensure_ascii=False,
+                separators=(",", ":"), allow_nan=False,
+            )
+        except (TypeError, ValueError):
+            return None
+        if actual_json != declared_json:
+            return None
+        return {
+            "model_id": self.model_id,
+            "model_revision": revision.lower(),
+            "config": dict(self.embedding_config),
+        }
 
     def _path_for(self, text: str) -> Path:
         # Legacy callers retain the original key format. Revision-aware callers

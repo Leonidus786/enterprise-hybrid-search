@@ -1,4 +1,7 @@
+import json
+import re
 import time
+from collections.abc import Mapping
 
 from .dense import DenseIndex
 from .fusion import rrf
@@ -8,6 +11,68 @@ from .validate import positive_int
 
 
 MODES = ("bm25", "dense", "hybrid", "hybrid_rerank")
+
+_IMMUTABLE_REVISION_RE = re.compile(r"^[0-9a-fA-F]{40,64}$")
+
+
+def _same_json_mapping(left, right):
+    """Compare JSON mappings without Python bool/int equality aliasing."""
+    if not isinstance(left, Mapping) or not isinstance(right, Mapping):
+        return False
+    try:
+        left_json = json.dumps(
+            dict(left), sort_keys=True, ensure_ascii=False,
+            separators=(",", ":"), allow_nan=False,
+        )
+        right_json = json.dumps(
+            dict(right), sort_keys=True, ensure_ascii=False,
+            separators=(",", ":"), allow_nan=False,
+        )
+    except (TypeError, ValueError):
+        return False
+    return left_json == right_json
+
+
+def _verified_query_embedding_identity(embed_fn):
+    """Return model identity only when the query embedder proves it."""
+    if not callable(embed_fn):
+        raise TypeError("query_embed_fn must be callable")
+
+    if hasattr(embed_fn, "verified_embedding_identity"):
+        identity = embed_fn.verified_embedding_identity
+        if identity is None:
+            raise ValueError(
+                "query embedder does not expose a verified embedding identity"
+            )
+    else:
+        metadata = getattr(embed_fn, "model_metadata", None)
+        config = getattr(embed_fn, "embedding_config", None)
+        if not isinstance(metadata, Mapping):
+            raise ValueError("query embedder is missing verified model metadata")
+        if metadata.get("revision_verified") is not True:
+            raise ValueError("query embedder immutable model revision is unverified")
+        identity = {
+            "model_id": metadata.get("model_id"),
+            "model_revision": metadata.get("resolved_revision"),
+            "config": config,
+        }
+
+    if not isinstance(identity, Mapping):
+        raise ValueError("query embedder identity must be a mapping")
+    model_id = identity.get("model_id")
+    revision = identity.get("model_revision")
+    config = identity.get("config")
+    if not isinstance(model_id, str) or not model_id.strip():
+        raise ValueError("query embedder identity has no valid model_id")
+    if not isinstance(revision, str) or not _IMMUTABLE_REVISION_RE.fullmatch(revision):
+        raise ValueError("query embedder identity has no verified immutable revision")
+    if not isinstance(config, Mapping):
+        raise ValueError("query embedder identity has no declared embedding_config")
+    return {
+        "model_id": model_id,
+        "model_revision": revision.lower(),
+        "config": dict(config),
+    }
 
 
 class HybridPipeline:
@@ -52,6 +117,120 @@ class HybridPipeline:
 
         # Candidate chunk IDs BEFORE reranking.
         self.last_candidate_ids = []
+
+    @classmethod
+    def from_snapshot(
+        cls,
+        snapshot,
+        *,
+        query_embed_fn,
+        query_prefix="",
+        score_fn=None,
+        candidate_k=50,
+        rrf_k=60,
+    ):
+        """Build a searchable pipeline from a validated persistent snapshot.
+
+        The persisted matrix is reused as-is. The query embedder must prove the
+        model ID, immutable revision and vector-affecting configuration stored
+        in the manifest. Query-prefix compatibility and the supported BM25
+        configuration are checked before constructing either retrieval index.
+        """
+        from .index_store import LoadedIndexSnapshot
+
+        if not isinstance(snapshot, LoadedIndexSnapshot):
+            raise TypeError("snapshot must be a LoadedIndexSnapshot")
+        positive_int("candidate_k", candidate_k)
+        positive_int("rrf_k", rrf_k)
+        if not isinstance(query_prefix, str):
+            raise TypeError("query_prefix must be a string")
+
+        manifest = snapshot.manifest
+        embedding = manifest.get("embedding")
+        if not isinstance(embedding, Mapping):
+            raise ValueError("snapshot manifest is missing embedding identity")
+        stored_config = embedding.get("config")
+        if not isinstance(stored_config, Mapping):
+            raise ValueError("snapshot manifest has an invalid embedding config")
+
+        config_without_prefix = dict(stored_config)
+        stored_query_prefix = config_without_prefix.pop("query_prefix", "")
+        if (
+            not isinstance(stored_query_prefix, str)
+            or query_prefix != stored_query_prefix
+        ):
+            raise ValueError(
+                "query_prefix does not match the persisted embedding configuration"
+            )
+
+        identity = _verified_query_embedding_identity(query_embed_fn)
+        stored_revision = embedding.get("model_revision")
+        if (
+            identity["model_id"] != embedding.get("model_id")
+            or not isinstance(stored_revision, str)
+            or identity["model_revision"] != stored_revision.lower()
+        ):
+            raise ValueError(
+                "query embedder model ID or immutable revision does not match snapshot"
+            )
+        if not _same_json_mapping(identity["config"], config_without_prefix):
+            raise ValueError(
+                "query embedder embedding configuration does not match snapshot"
+            )
+
+        vectors_config = manifest.get("vectors")
+        if not isinstance(vectors_config, Mapping):
+            raise ValueError("snapshot manifest is missing vector metadata")
+        configured_dimension = config_without_prefix.get("dimension")
+        if (
+            configured_dimension is not None
+            and configured_dimension != vectors_config.get("dimension")
+        ):
+            raise ValueError(
+                "embedding configuration dimension does not match snapshot vectors"
+            )
+
+        sparse_config = manifest.get("sparse")
+        if not isinstance(sparse_config, Mapping):
+            raise ValueError("snapshot manifest has an invalid sparse configuration")
+        sparse_keys = set(sparse_config)
+        if sparse_keys not in (
+            {"algorithm", "version"},
+            {"algorithm", "version", "k1", "b"},
+        ):
+            raise ValueError("unsupported BM25 sparse configuration fields")
+        version = sparse_config.get("version")
+        if (
+            sparse_config.get("algorithm") != "bm25"
+            or isinstance(version, bool)
+            or not isinstance(version, int)
+            or version != 1
+        ):
+            raise ValueError("unsupported sparse index algorithm or version")
+        k1 = sparse_config.get("k1", 1.5)
+        b = sparse_config.get("b", 0.75)
+
+        chunks = list(snapshot.chunks)
+        by_id = {chunk.chunk_id: chunk for chunk in chunks}
+        if len(by_id) != len(chunks):
+            raise ValueError("duplicate chunk_id in snapshot corpus")
+
+        # Do not call __init__: it would embed all document chunks again.
+        pipeline = cls.__new__(cls)
+        pipeline.chunks = chunks
+        pipeline._by_id = by_id
+        pipeline.sparse = SparseIndex(chunks, k1=k1, b=b)
+        pipeline.dense = DenseIndex.from_snapshot(
+            snapshot,
+            query_embed_fn=query_embed_fn,
+            query_prefix=query_prefix,
+        )
+        pipeline.reranker = Reranker(score_fn) if score_fn else None
+        pipeline.candidate_k = candidate_k
+        pipeline.rrf_k = rrf_k
+        pipeline.last_timing_ms = {"retrieval": 0.0, "rerank": 0.0}
+        pipeline.last_candidate_ids = []
+        return pipeline
 
     @property
     def chunk_ids(self):
