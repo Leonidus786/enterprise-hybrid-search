@@ -229,11 +229,36 @@ def test_manifest_accepts_matching_embedding_identity(sample_artifacts):
 
 def test_manifest_rejects_unknown_or_non_integer_schema_version(sample_artifacts):
     manifest = build_valid_manifest(sample_artifacts)
-    manifest["schema_version"] = 2
+    manifest["schema_version"] = 3
     with pytest.raises(ValueError, match="schema version"):
         validate_manifest(manifest)
     manifest["schema_version"] = 1.0
     with pytest.raises(ValueError, match="schema version"):
+        validate_manifest(manifest)
+
+
+def test_manifest_accepts_and_validates_operation_schema_v2(sample_artifacts):
+    manifest = build_valid_manifest(sample_artifacts)
+    operation = {
+        "operation": "rebuild",
+        "request_fingerprint_sha256": "a" * 64,
+    }
+    manifest["schema_version"] = 2
+    manifest["operation"] = dict(operation)
+
+    normalized = validate_manifest(manifest)
+    assert normalized["schema_version"] == 2
+    assert normalized["operation"] == operation
+
+    manifest.pop("operation")
+    with pytest.raises(ValueError, match="missing or unsupported fields"):
+        validate_manifest(manifest)
+
+    manifest["operation"] = {
+        **operation,
+        "request_fingerprint_sha256": "not-a-digest",
+    }
+    with pytest.raises(ValueError, match="SHA-256"):
         validate_manifest(manifest)
 
 

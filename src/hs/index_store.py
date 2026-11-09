@@ -37,6 +37,8 @@ REQUIRED_ARTIFACTS = (
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _INDEX_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _REVISION_RE = re.compile(r"^[0-9a-fA-F]{40,64}$")
+_OPERATION_SCHEMA_VERSION = 2
+_OPERATION_TYPES = frozenset({"rebuild", "insert", "update", "delete"})
 
 
 def _require_nonempty_string(value: object, name: str) -> str:
@@ -59,6 +61,31 @@ def _require_sha256(value: object, name: str) -> str:
     if not isinstance(value, str) or not _SHA256_RE.fullmatch(value):
         raise ValueError(f"{name} must be a lowercase SHA-256 hex digest")
     return value
+
+
+def _validate_operation_metadata(value: object) -> dict[str, str]:
+    """Validate the request identity recorded by a mutation snapshot."""
+    if not isinstance(value, Mapping) or set(value) != {
+        "operation",
+        "request_fingerprint_sha256",
+    }:
+        raise ValueError("manifest.operation has an invalid schema")
+
+    operation = _require_nonempty_string(
+        value["operation"], "operation.operation"
+    )
+    if operation not in _OPERATION_TYPES:
+        raise ValueError("operation.operation is unsupported")
+
+    fingerprint = _require_sha256(
+        value["request_fingerprint_sha256"],
+        "operation.request_fingerprint_sha256",
+    )
+
+    return {
+        "operation": operation,
+        "request_fingerprint_sha256": fingerprint,
+    }
 
 
 def _json_mapping(value: object, name: str) -> dict[str, Any]:
@@ -358,15 +385,26 @@ def build_manifest(
     corpus_fingerprint_sha256: str,
     artifacts: Mapping[str, Mapping[str, Any]],
     created_at_utc: str | None = None,
+    operation_metadata: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build and validate manifest schema v1 from already-written artifacts."""
+    """Build and validate a v1 snapshot or operation-aware v2 snapshot."""
     if created_at_utc is None:
         created_at_utc = datetime.now(timezone.utc).isoformat()
     if not isinstance(artifacts, Mapping):
         raise ValueError("artifacts must be a mapping")
+    normalized_operation = (
+        _validate_operation_metadata(operation_metadata)
+        if operation_metadata is not None
+        else None
+    )
+
     manifest = {
         "format": INDEX_FORMAT,
-        "schema_version": INDEX_SCHEMA_VERSION,
+        "schema_version": (
+            _OPERATION_SCHEMA_VERSION
+            if normalized_operation is not None
+            else INDEX_SCHEMA_VERSION
+        ),
         "index_id": index_id,
         "created_at_utc": created_at_utc,
         "corpus": {
@@ -389,6 +427,8 @@ def build_manifest(
         "sparse": _json_mapping(sparse_config, "sparse_config"),
         "artifacts": dict(artifacts),
     }
+    if normalized_operation is not None:
+        manifest["operation"] = normalized_operation
     return validate_manifest(manifest)
 
 
@@ -397,24 +437,34 @@ def validate_manifest(
     *,
     expected_embedding: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Validate manifest v1 strictly and return an independent JSON-safe copy."""
+    """Validate manifest v1/v2 strictly and return an independent JSON-safe copy."""
     if not isinstance(manifest, Mapping):
         raise ValueError("manifest must be a JSON object")
+    if "schema_version" not in manifest:
+        raise ValueError("manifest has missing or unsupported fields")
+
+    version = manifest["schema_version"]
+
+    if (
+        isinstance(version, bool)
+        or not isinstance(version, int)
+        or version not in {INDEX_SCHEMA_VERSION, _OPERATION_SCHEMA_VERSION}
+    ):
+        raise ValueError("unsupported index schema version")
+
     required = {
         "format", "schema_version", "index_id", "created_at_utc", "corpus",
         "embedding", "vectors", "chunking", "sparse", "artifacts",
     }
+
+    if version == _OPERATION_SCHEMA_VERSION:
+        required.add("operation")
+
     if set(manifest) != required:
         raise ValueError("manifest has missing or unsupported fields")
+
     if manifest["format"] != INDEX_FORMAT:
         raise ValueError("unsupported index format")
-    version = manifest["schema_version"]
-    if (
-        isinstance(version, bool)
-        or not isinstance(version, int)
-        or version != INDEX_SCHEMA_VERSION
-    ):
-        raise ValueError("unsupported index schema version")
 
     index_id = _require_nonempty_string(manifest["index_id"], "index_id")
     if not _INDEX_ID_RE.fullmatch(index_id):
@@ -525,7 +575,7 @@ def validate_manifest(
 
     normalized = {
         "format": INDEX_FORMAT,
-        "schema_version": INDEX_SCHEMA_VERSION,
+        "schema_version": version,
         "index_id": index_id,
         "created_at_utc": created_at,
         "corpus": {
@@ -544,6 +594,10 @@ def validate_manifest(
         "sparse": sparse,
         "artifacts": normalized_artifacts,
     }
+    if version == _OPERATION_SCHEMA_VERSION:
+        normalized["operation"] = _validate_operation_metadata(
+            manifest["operation"]
+        )
     # Ensure manifest is fully JSON serializable and detached from caller objects.
     return json.loads(canonical_json(normalized))
 
@@ -719,6 +773,52 @@ def _write_bytes_durable(path: Path, payload: bytes) -> None:
         os.fsync(handle.fileno())
 
 
+def _validate_precomputed_embedding_matrix(
+    raw: object,
+    *,
+    expected_rows: int,
+) -> np.ndarray:
+    """Validate an already-normalized matrix without changing its values.
+
+    Incremental index operations reuse rows from a previously validated
+    snapshot. Re-normalizing those rows can introduce tiny float32 changes,
+    so this path validates normalization and preserves supplied values exactly.
+    """
+    try:
+        matrix = np.asarray(raw, dtype=np.float32)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(
+            "precomputed embeddings must be a numeric 2D matrix") from exc
+
+    if (
+        matrix.ndim != 2
+        or matrix.shape[0] != expected_rows
+        or matrix.shape[1] == 0
+    ):
+        raise ValueError(
+            "precomputed embeddings must have shape "
+            f"({expected_rows}, dimension>0); got {matrix.shape}"
+        )
+    if not np.isfinite(matrix).all():
+        raise ValueError(
+            "precomputed embeddings must contain only finite values")
+
+    with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+        norms = np.linalg.norm(matrix, axis=1)
+    if not np.isfinite(norms).all():
+        raise ValueError("precomputed embeddings contain invalid vector norms")
+    nonzero_rows = np.any(matrix != 0, axis=1)
+    if np.any(nonzero_rows & (norms == 0)):
+        raise ValueError(
+            "precomputed embeddings contain non-zero rows with zero norm")
+    if nonzero_rows.any() and not np.allclose(
+        norms[nonzero_rows], 1.0, rtol=1e-5, atol=1e-6
+    ):
+        raise ValueError("precomputed embeddings must be L2-normalized")
+
+    return np.ascontiguousarray(matrix, dtype=np.float32)
+
+
 def _write_vectors_durable(path: Path, vectors: np.ndarray) -> None:
     """Write a NumPy matrix without pickle and flush it to disk."""
     with path.open("xb") as handle:
@@ -733,13 +833,15 @@ def build_index_snapshot(
     index_id: str,
     documents: Iterable[Document],
     chunks: Iterable[Chunk],
-    embed_fn: Callable[[list[str]], object],
+    embed_fn: Callable[[list[str]], object] | None,
     embedding_model_id: str,
     embedding_model_revision: str,
     embedding_config: Mapping[str, Any],
     sparse_config: Mapping[str, Any],
     chunking_config: Mapping[str, Any] | None = None,
     created_at_utc: str | None = None,
+    precomputed_vectors: object | None = None,
+    operation_metadata: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a new on-disk index snapshot and return its validated manifest.
 
@@ -749,8 +851,11 @@ def build_index_snapshot(
     the future loader. This function does not activate a snapshot or implement
     ``CURRENT.json`` switching.
     """
-    if not callable(embed_fn):
-        raise TypeError("embed_fn must be callable")
+    if precomputed_vectors is None:
+        if not callable(embed_fn):
+            raise TypeError("embed_fn must be callable")
+    elif embed_fn is not None and not callable(embed_fn):
+        raise TypeError("embed_fn must be callable or None")
 
     document_rows = list(documents)
     chunk_rows = list(chunks)
@@ -792,15 +897,21 @@ def build_index_snapshot(
         raise FileExistsError(
             f"index snapshot destination already exists: {target}")
 
-    texts = [chunk.text for chunk in chunk_rows]
-    try:
-        raw_vectors = embed_fn(texts)
-    except Exception as exc:
-        raise RuntimeError(
-            "embedding generation failed while building index") from exc
-    vectors = _normalize_embedding_matrix(
-        raw_vectors, expected_rows=len(chunk_rows)
-    )
+    if precomputed_vectors is None:
+        texts = [chunk.text for chunk in chunk_rows]
+        try:
+            raw_vectors = embed_fn(texts)
+        except Exception as exc:
+            raise RuntimeError(
+                "embedding generation failed while building index") from exc
+        vectors = _normalize_embedding_matrix(
+            raw_vectors, expected_rows=len(chunk_rows)
+        )
+    else:
+        vectors = _validate_precomputed_embedding_matrix(
+            precomputed_vectors,
+            expected_rows=len(chunk_rows),
+        )
 
     document_payload = encode_jsonl(
         document_to_record(document) for document in document_rows
@@ -849,6 +960,8 @@ def build_index_snapshot(
             ),
             artifacts=artifacts,
             created_at_utc=created_at_utc,
+            operation_metadata=operation_metadata,
+
         )
         manifest_payload = (canonical_json(manifest) + "\n").encode("utf-8")
         _write_bytes_durable(target / "manifest.json", manifest_payload)
@@ -1244,6 +1357,86 @@ def _load_pointer_target(
     return loaded
 
 
+def _build_operation_metadata(
+    operation: str,
+    request: Mapping[str, Any],
+) -> dict[str, str]:
+    """Create a deterministic fingerprint for one mutation request."""
+    normalized_operation = _require_nonempty_string(
+        operation, "operation"
+    )
+    if normalized_operation not in _OPERATION_TYPES:
+        raise ValueError("operation is unsupported")
+
+    normalized_request = _json_mapping(
+        request, "operation request"
+    )
+
+    fingerprint = sha256_json(
+        {
+            "identity_type": "hs.index_operation_request",
+            "identity_schema_version": 1,
+            "operation": normalized_operation,
+            "request": normalized_request,
+        }
+    )
+
+    return _validate_operation_metadata(
+        {
+            "operation": normalized_operation,
+            "request_fingerprint_sha256": fingerprint,
+        }
+    )
+
+
+def _load_existing_operation_snapshot(
+    index_root: str | Path,
+    index_id: str,
+    operation_metadata: Mapping[str, Any],
+) -> LoadedIndexSnapshot | None:
+    """Return an exact active retry, or reject an existing immutable version."""
+    normalized_index_id = _validate_index_id(index_id)
+    normalized_metadata = _validate_operation_metadata(
+        operation_metadata
+    )
+
+    version_dir = (
+        Path(index_root) / "versions" / normalized_index_id
+    )
+
+    if not version_dir.exists() and not version_dir.is_symlink():
+        return None
+
+    current_pointer = _read_current_pointer(index_root)
+
+    # An existing inactive version must never be reactivated by a retry.
+    if (
+        current_pointer is None
+        or current_pointer["index_id"] != normalized_index_id
+    ):
+        raise FileExistsError(
+            f"immutable index version already exists: {normalized_index_id}"
+        )
+
+    snapshot = _load_pointer_target(
+        index_root,
+        current_pointer,
+    )
+
+    stored_metadata = snapshot.manifest.get("operation")
+
+    if (
+        stored_metadata is None
+        or canonical_json(stored_metadata)
+        != canonical_json(normalized_metadata)
+    ):
+        raise ValueError(
+            f"idempotency conflict for index version: {normalized_index_id}"
+        )
+
+    return snapshot
+
+
 def load_current_index_snapshot(
     index_root: str | Path,
     *,
@@ -1429,7 +1622,7 @@ def build_and_activate_index_snapshot(
     index_id: str,
     documents: Iterable[Document],
     chunks: Iterable[Chunk],
-    embed_fn: Callable[[list[str]], object],
+    embed_fn: Callable[[list[str]], object] | None,
     embedding_model_id: str,
     embedding_model_revision: str,
     embedding_config: Mapping[str, Any],
@@ -1437,6 +1630,8 @@ def build_and_activate_index_snapshot(
     chunking_config: Mapping[str, Any] | None = None,
     created_at_utc: str | None = None,
     expected_embedding: Mapping[str, Any] | None = None,
+    precomputed_vectors: object | None = None,
+    operation_metadata: Mapping[str, Any] | None = None,
 ) -> LoadedIndexSnapshot:
     """Build in staging, validate, promote and activate a new immutable version.
 
@@ -1468,6 +1663,8 @@ def build_and_activate_index_snapshot(
             sparse_config=sparse_config,
             chunking_config=chunking_config,
             created_at_utc=created_at_utc,
+            precomputed_vectors=precomputed_vectors,
+            operation_metadata=operation_metadata,
         )
         return activate_index_snapshot(
             root,
@@ -1561,7 +1758,88 @@ def rebuild_and_activate_index_snapshot(
 
     # Canonical order makes the complete rebuild independent of input order.
     document_rows.sort(key=lambda document: document.doc_id)
+    # Normalize build inputs before checking whether this is an exact retry.
+    normalized_embedding_config = _json_mapping(
+        embedding_config, "embedding_config"
+    )
+    normalized_sparse_config = _json_mapping(
+        sparse_config, "sparse_config"
+    )
 
+    if not normalized_embedding_config:
+        raise ValueError("embedding_config must not be empty")
+    if not normalized_sparse_config:
+        raise ValueError("sparse_config must not be empty")
+
+    normalized_model_id = _require_nonempty_string(
+        embedding_model_id, "embedding_model_id"
+    )
+    normalized_model_revision = _require_nonempty_string(
+        embedding_model_revision, "embedding_model_revision"
+    )
+
+    if not _REVISION_RE.fullmatch(normalized_model_revision):
+        raise ValueError(
+            "embedding_model_revision must be an immutable hexadecimal commit"
+        )
+
+        # Verify that the embedder identity matches the declared build identity.
+    # This reads metadata only; it does not invoke embedding inference.
+    verified_identity = _verified_document_embedder_identity(embed_fn)
+
+    if verified_identity["model_id"] != normalized_model_id:
+        raise ValueError(
+            "declared embedding model ID does not match verified embedder"
+        )
+
+    if verified_identity["model_revision"] != normalized_model_revision.lower():
+        raise ValueError(
+            "declared embedding revision does not match verified embedder"
+        )
+
+        # query_prefix belongs to query-side configuration, not document encoding.
+    document_embedding_config = dict(normalized_embedding_config)
+    query_prefix = document_embedding_config.pop("query_prefix", "")
+
+    if not isinstance(query_prefix, str):
+        raise ValueError(
+            "embedding_config.query_prefix must be a string"
+        )
+
+    if canonical_json(verified_identity["config"]) != canonical_json(
+        document_embedding_config
+    ):
+        raise ValueError(
+            "declared document embedding config does not match verified embedder"
+        )
+
+    operation_metadata = _build_operation_metadata(
+        "rebuild",
+        {
+            "documents": [
+                {
+                    "doc_id": document.doc_id,
+                    "revision_sha256": document.revision_sha256,
+                }
+                for document in document_rows
+            ],
+            "chunk_size": chunk_size,
+            "chunk_overlap": chunk_overlap,
+            "embedding_model_id": verified_identity["model_id"],
+            "embedding_model_revision": verified_identity["model_revision"],
+            "embedding_config": normalized_embedding_config,
+            "sparse_config": normalized_sparse_config,
+        },
+    )
+
+    existing_snapshot = _load_existing_operation_snapshot(
+        index_root,
+        normalized_index_id,
+        operation_metadata,
+    )
+
+    if existing_snapshot is not None:
+        return existing_snapshot
     # Always regenerate the complete chunk collection.
     chunk_rows: list[Chunk] = []
 
@@ -1591,11 +1869,540 @@ def rebuild_and_activate_index_snapshot(
         documents=document_rows,
         chunks=chunk_rows,
         embed_fn=embed_fn,
-        embedding_model_id=embedding_model_id,
-        embedding_model_revision=embedding_model_revision,
-        embedding_config=embedding_config,
+        embedding_model_id=verified_identity["model_id"],
+        embedding_model_revision=verified_identity["model_revision"],
+        embedding_config=normalized_embedding_config,
         sparse_config=sparse_config,
         chunking_config=None,
         created_at_utc=created_at_utc,
         expected_embedding=expected_embedding,
+        operation_metadata=operation_metadata,
+    )
+
+
+def _verified_document_embedder_identity(
+    embed_fn: Callable[[list[str]], object],
+) -> dict[str, Any]:
+    """Return a model identity proven by the embedder, not caller declarations."""
+    if not callable(embed_fn):
+        raise TypeError("embed_fn must be callable")
+
+    if hasattr(embed_fn, "verified_embedding_identity"):
+        identity = embed_fn.verified_embedding_identity
+        if identity is None:
+            raise ValueError(
+                "embed_fn does not expose a verified embedding identity")
+    else:
+        metadata = getattr(embed_fn, "model_metadata", None)
+        config = getattr(embed_fn, "embedding_config", None)
+        if not isinstance(metadata, Mapping):
+            raise ValueError("embed_fn is missing verified model metadata")
+        if metadata.get("revision_verified") is not True:
+            raise ValueError("embed_fn immutable model revision is unverified")
+        identity = {
+            "model_id": metadata.get("model_id"),
+            "model_revision": metadata.get("resolved_revision"),
+            "config": config,
+        }
+
+    if not isinstance(identity, Mapping):
+        raise ValueError("embed_fn identity must be a mapping")
+    model_id = _require_nonempty_string(
+        identity.get("model_id"), "embed_fn.model_id")
+    revision = _require_nonempty_string(
+        identity.get("model_revision"), "embed_fn.model_revision")
+    if not _REVISION_RE.fullmatch(revision):
+        raise ValueError(
+            "embed_fn model revision must be a verified immutable commit")
+    config = _json_mapping(identity.get("config"), "embed_fn.embedding_config")
+    if not config:
+        raise ValueError("embed_fn embedding_config must not be empty")
+    return {
+        "model_id": model_id,
+        "model_revision": revision.lower(),
+        "config": config,
+    }
+
+
+def _validate_insert_embedding_compatibility(
+    snapshot: LoadedIndexSnapshot,
+    embedder_identity: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate document-embedder identity against the active snapshot."""
+    embedding = snapshot.manifest.get("embedding")
+    if not isinstance(embedding, Mapping):
+        raise ValueError("active snapshot is missing embedding identity")
+    stored_config = _json_mapping(
+        embedding.get("config"), "snapshot.embedding.config")
+    stored_query_prefix = stored_config.pop("query_prefix", "")
+    if not isinstance(stored_query_prefix, str):
+        raise ValueError("snapshot query_prefix must be a string")
+
+    stored_model_id = _require_nonempty_string(
+        embedding.get("model_id"), "snapshot.embedding.model_id")
+    stored_revision = _require_nonempty_string(
+        embedding.get("model_revision"), "snapshot.embedding.model_revision")
+    if (
+        embedder_identity["model_id"] != stored_model_id
+        or embedder_identity["model_revision"] != stored_revision.lower()
+    ):
+        raise ValueError(
+            "document embedder model ID or immutable revision does not match snapshot")
+    if canonical_json(embedder_identity["config"]) != canonical_json(stored_config):
+        raise ValueError(
+            "document embedder configuration does not match snapshot")
+
+    vector_metadata = snapshot.manifest.get("vectors")
+    if not isinstance(vector_metadata, Mapping):
+        raise ValueError("active snapshot is missing vector metadata")
+    stored_dimension = vector_metadata.get("dimension")
+    configured_dimension = stored_config.get("dimension")
+    if configured_dimension is not None and (
+        isinstance(configured_dimension, bool)
+        or not isinstance(configured_dimension, int)
+        or configured_dimension <= 0
+        or configured_dimension != stored_dimension
+    ):
+        raise ValueError(
+            "embedding configuration dimension does not match snapshot vectors")
+
+    # Preserve the complete stored configuration, including query_prefix.
+    return {
+        "model_id": stored_model_id,
+        "model_revision": stored_revision,
+        "config": _json_mapping(
+            embedding.get("config"), "snapshot.embedding.config"),
+    }
+
+
+def insert_document_and_activate_index_snapshot(
+    index_root: str | Path,
+    *,
+    index_id: str,
+    document: Document,
+    embed_fn: Callable[[list[str]], object],
+    created_at_utc: str | None = None,
+) -> LoadedIndexSnapshot:
+    """Insert one new document while reusing every existing dense vector.
+
+    Only chunks belonging to the inserted document are embedded. Existing
+    vectors are remapped by chunk ID into canonical document/chunk order and
+    written into a new immutable snapshot before atomic activation.
+
+    Like snapshot activation, this operation assumes a single writer; it does
+    not provide cross-process writer locking.
+    """
+    normalized_index_id = _validate_index_id(index_id)
+    if not isinstance(document, Document):
+        raise TypeError("document must be a Document")
+    if not callable(embed_fn):
+        raise TypeError("embed_fn must be callable")
+
+    identity = _verified_document_embedder_identity(embed_fn)
+
+    operation_metadata = _build_operation_metadata(
+        "insert",
+        {
+            "document_revision_sha256": document.revision_sha256,
+            "embedding": identity,
+        },
+    )
+
+    existing_snapshot = _load_existing_operation_snapshot(
+        index_root,
+        normalized_index_id,
+        operation_metadata,
+    )
+
+    if existing_snapshot is not None:
+        return existing_snapshot
+
+    active = load_current_index_snapshot(index_root)
+    if any(existing.doc_id == document.doc_id for existing in active.documents):
+        raise ValueError(f"duplicate document ID: {document.doc_id!r}")
+
+    version_dir = Path(index_root) / "versions" / normalized_index_id
+    if version_dir.exists() or version_dir.is_symlink():
+        raise FileExistsError(
+            f"immutable index version already exists: {normalized_index_id}")
+
+    expected_embedding = _validate_insert_embedding_compatibility(
+        active, identity)
+
+    chunk_size, chunk_overlap = _chunking_parameters(
+        active.manifest["chunking"])
+    new_chunks = chunk_text(
+        document.doc_id,
+        document.text,
+        size=chunk_size,
+        overlap=chunk_overlap,
+        source=document.source,
+        title=document.title,
+        metadata=document.metadata,
+        document_revision_sha256=document.revision_sha256,
+    )
+
+    new_vectors = np.empty((0, active.vectors.shape[1]), dtype=np.float32)
+    if new_chunks:
+        try:
+            raw_new_vectors = embed_fn([chunk.text for chunk in new_chunks])
+        except Exception as exc:
+            raise RuntimeError(
+                "embedding generation failed while inserting document") from exc
+        new_vectors = _normalize_embedding_matrix(
+            raw_new_vectors, expected_rows=len(new_chunks))
+        if new_vectors.shape[1] != active.vectors.shape[1]:
+            raise ValueError(
+                "new document embedding dimension does not match existing vectors")
+
+    documents = sorted(
+        [*active.documents, document], key=lambda item: item.doc_id)
+    chunks_by_document: dict[str, list[Chunk]] = {
+        item.doc_id: [] for item in documents
+    }
+    vector_by_chunk_id: dict[str, np.ndarray] = {
+        chunk.chunk_id: active.vectors[row]
+        for row, chunk in enumerate(active.chunks)
+    }
+    for chunk in active.chunks:
+        chunks_by_document[chunk.doc_id].append(chunk)
+
+    for row, chunk in enumerate(new_chunks):
+        if chunk.chunk_id in vector_by_chunk_id:
+            raise ValueError(
+                f"duplicate chunk ID after insert: {chunk.chunk_id!r}")
+        vector_by_chunk_id[chunk.chunk_id] = new_vectors[row]
+        chunks_by_document[document.doc_id].append(chunk)
+
+    chunks = [
+        chunk
+        for item in documents
+        for chunk in chunks_by_document[item.doc_id]
+    ]
+    if not chunks:
+        raise ValueError(
+            "cannot insert into an index without searchable chunks")
+
+    try:
+        ordered_vectors = np.stack(
+            [vector_by_chunk_id[chunk.chunk_id] for chunk in chunks], axis=0
+        ).astype(np.float32, copy=False)
+    except KeyError as exc:
+        raise ValueError(
+            f"missing vector for chunk {exc.args[0]!r} during insert") from exc
+
+    return build_and_activate_index_snapshot(
+        index_root,
+        index_id=normalized_index_id,
+        documents=documents,
+        chunks=chunks,
+        embed_fn=None,
+        embedding_model_id=expected_embedding["model_id"],
+        embedding_model_revision=expected_embedding["model_revision"],
+        embedding_config=expected_embedding["config"],
+        sparse_config=active.manifest["sparse"],
+        chunking_config=active.manifest["chunking"],
+        created_at_utc=created_at_utc,
+        expected_embedding=expected_embedding,
+        precomputed_vectors=ordered_vectors,
+        operation_metadata=operation_metadata,
+    )
+
+
+def update_document_and_activate_index_snapshot(
+    index_root: str | Path,
+    *,
+    index_id: str,
+    document: Document,
+    embed_fn: Callable[[list[str]], object],
+    created_at_utc: str | None = None,
+) -> LoadedIndexSnapshot:
+    """Replace one existing document in a new immutable index snapshot.
+
+    Only the replacement document's chunks are embedded. Vectors belonging
+    to all other documents are reused exactly as stored in the active
+    validated snapshot.
+
+    The complete replacement is built and activated as one snapshot.
+    Like the other index mutation operations, this assumes a single writer
+    and does not provide cross-process writer locking.
+    """
+    normalized_index_id = _validate_index_id(index_id)
+
+    if not isinstance(document, Document):
+        raise TypeError("document must be a Document")
+
+    if not callable(embed_fn):
+        raise TypeError("embed_fn must be callable")
+
+    identity = _verified_document_embedder_identity(embed_fn)
+    operation_metadata = _build_operation_metadata(
+        "update",
+        {
+            "document_revision_sha256": document.revision_sha256,
+            "embedding": identity,
+        },
+    )
+
+    existing_snapshot = _load_existing_operation_snapshot(
+        index_root,
+        normalized_index_id,
+        operation_metadata,
+    )
+    if existing_snapshot is not None:
+        return existing_snapshot
+
+    active = load_current_index_snapshot(index_root)
+
+    existing_document_ids = {
+        item.doc_id for item in active.documents
+    }
+
+    if document.doc_id not in existing_document_ids:
+        raise ValueError(
+            f"document ID {document.doc_id!r} does not exist in active index"
+        )
+
+    version_dir = (
+        Path(index_root) / "versions" / normalized_index_id
+    )
+
+    if version_dir.exists() or version_dir.is_symlink():
+        raise FileExistsError(
+            f"immutable index version already exists: {normalized_index_id}"
+        )
+
+    expected_embedding = _validate_insert_embedding_compatibility(
+        active,
+        identity,
+    )
+
+    chunk_size, chunk_overlap = _chunking_parameters(
+        active.manifest["chunking"]
+    )
+
+    new_chunks = chunk_text(
+        document.doc_id,
+        document.text,
+        size=chunk_size,
+        overlap=chunk_overlap,
+        source=document.source,
+        title=document.title,
+        metadata=document.metadata,
+        document_revision_sha256=document.revision_sha256,
+    )
+
+    # Preserve all chunks except those belonging to the replaced document.
+    retained_chunks = [
+        chunk
+        for chunk in active.chunks
+        if chunk.doc_id != document.doc_id
+    ]
+
+    # The index must still contain searchable content after the update.
+    # Reject this before invoking the embedding model.
+    if not retained_chunks and not new_chunks:
+        raise ValueError(
+            "update would leave the index without searchable chunks"
+        )
+
+    new_vectors = np.empty(
+        (0, active.vectors.shape[1]),
+        dtype=np.float32,
+    )
+
+    if new_chunks:
+        try:
+            raw_new_vectors = embed_fn(
+                [chunk.text for chunk in new_chunks]
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                "embedding generation failed while updating document"
+            ) from exc
+
+        new_vectors = _normalize_embedding_matrix(
+            raw_new_vectors,
+            expected_rows=len(new_chunks),
+        )
+
+        if new_vectors.shape[1] != active.vectors.shape[1]:
+            raise ValueError(
+                "updated document embedding dimension does not "
+                "match existing vectors"
+            )
+
+    # Replace the original document record and restore deterministic order.
+    documents = [
+        document if item.doc_id == document.doc_id else item
+        for item in active.documents
+    ]
+    documents.sort(key=lambda item: item.doc_id)
+
+    chunks_by_document: dict[str, list[Chunk]] = {
+        item.doc_id: [] for item in documents
+    }
+
+    # Only unchanged chunks retain their original persisted vectors.
+    vector_by_chunk_id: dict[str, np.ndarray] = {
+        chunk.chunk_id: active.vectors[row]
+        for row, chunk in enumerate(active.chunks)
+        if chunk.doc_id != document.doc_id
+    }
+
+    for chunk in retained_chunks:
+        chunks_by_document[chunk.doc_id].append(chunk)
+
+    for row, chunk in enumerate(new_chunks):
+        if chunk.chunk_id in vector_by_chunk_id:
+            raise ValueError(
+                f"duplicate chunk ID after update: {chunk.chunk_id!r}"
+            )
+
+        vector_by_chunk_id[chunk.chunk_id] = new_vectors[row]
+        chunks_by_document[document.doc_id].append(chunk)
+
+    # Construct canonical document/chunk ordering.
+    chunks = [
+        chunk
+        for item in documents
+        for chunk in chunks_by_document[item.doc_id]
+    ]
+
+    if not chunks:
+        raise ValueError(
+            "updated index must contain at least one searchable chunk"
+        )
+
+    try:
+        ordered_vectors = np.stack(
+            [
+                vector_by_chunk_id[chunk.chunk_id]
+                for chunk in chunks
+            ],
+            axis=0,
+        ).astype(np.float32, copy=False)
+    except KeyError as exc:
+        raise ValueError(
+            f"missing vector for chunk {exc.args[0]!r} during update"
+        ) from exc
+
+    return build_and_activate_index_snapshot(
+        index_root,
+        index_id=normalized_index_id,
+        documents=documents,
+        chunks=chunks,
+        embed_fn=None,
+        embedding_model_id=expected_embedding["model_id"],
+        embedding_model_revision=expected_embedding["model_revision"],
+        embedding_config=expected_embedding["config"],
+        sparse_config=active.manifest["sparse"],
+        chunking_config=active.manifest["chunking"],
+        created_at_utc=created_at_utc,
+        expected_embedding=expected_embedding,
+        precomputed_vectors=ordered_vectors,
+        operation_metadata=operation_metadata,
+    )
+
+
+def delete_document_and_activate_index_snapshot(
+    index_root: str | Path,
+    *,
+    index_id: str,
+    doc_id: str,
+    created_at_utc: str | None = None,
+) -> LoadedIndexSnapshot:
+    """Delete one document using a new immutable index snapshot.
+
+    Remaining documents, chunks, and their persisted vectors are reused
+    without invoking an embedding model.
+
+    The previous snapshot remains available for rollback. Like the other
+    index mutation operations, this assumes a single writer and does not
+    provide cross-process writer locking.
+    """
+    normalized_index_id = _validate_index_id(index_id)
+    normalized_doc_id = _require_nonempty_string(doc_id, "doc_id")
+
+    operation_metadata = _build_operation_metadata(
+        "delete",
+        {"doc_id": normalized_doc_id},
+    )
+    existing_snapshot = _load_existing_operation_snapshot(
+        index_root,
+        normalized_index_id,
+        operation_metadata,
+    )
+    if existing_snapshot is not None:
+        return existing_snapshot
+
+    active = load_current_index_snapshot(index_root)
+
+    existing_document_ids = {
+        item.doc_id for item in active.documents
+    }
+
+    if normalized_doc_id not in existing_document_ids:
+        raise ValueError(
+            f"document ID {normalized_doc_id!r} does not exist in active index"
+        )
+
+    version_dir = (
+        Path(index_root) / "versions" / normalized_index_id
+    )
+
+    if version_dir.exists() or version_dir.is_symlink():
+        raise FileExistsError(
+            f"immutable index version already exists: {normalized_index_id}"
+        )
+
+    # Retain every document except the requested deletion target.
+    documents = [
+        document
+        for document in active.documents
+        if document.doc_id != normalized_doc_id
+    ]
+
+    # Select chunks and their corresponding persisted vector rows together.
+    retained_rows = [
+        row
+        for row, chunk in enumerate(active.chunks)
+        if chunk.doc_id != normalized_doc_id
+    ]
+
+    chunks = [
+        active.chunks[row]
+        for row in retained_rows
+    ]
+
+    # Do not activate an index without searchable content.
+    if not chunks:
+        raise ValueError(
+            "delete would leave the index without searchable chunks"
+        )
+
+    # Advanced indexing preserves the exact values and row alignment.
+    # No embedding model invocation is required.
+    ordered_vectors = active.vectors[retained_rows].astype(
+        np.float32,
+        copy=False,
+    )
+
+    embedding = active.manifest["embedding"]
+
+    return build_and_activate_index_snapshot(
+        index_root,
+        index_id=normalized_index_id,
+        documents=documents,
+        chunks=chunks,
+        embed_fn=None,
+        embedding_model_id=embedding["model_id"],
+        embedding_model_revision=embedding["model_revision"],
+        embedding_config=embedding["config"],
+        sparse_config=active.manifest["sparse"],
+        chunking_config=active.manifest["chunking"],
+        created_at_utc=created_at_utc,
+        expected_embedding=embedding,
+        precomputed_vectors=ordered_vectors,
+        operation_metadata=operation_metadata,
     )

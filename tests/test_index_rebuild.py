@@ -72,6 +72,15 @@ def _embedder(calls=None):
 
         return np.asarray(rows, dtype=np.float32)
 
+    # Attach verified identity to the callable embedder.
+    # These lines belong OUTSIDE the nested embed() function.
+    embed.model_metadata = {
+        "model_id": MODEL_ID,
+        "resolved_revision": MODEL_REVISION,
+        "revision_verified": True,
+    }
+    embed.embedding_config = dict(EMBEDDING_CONFIG)
+
     return embed
 
 
@@ -198,13 +207,22 @@ def test_failed_full_rebuild_preserves_previous_active_snapshot(tmp_path):
     def broken_embedder(texts):
         raise OSError("simulated model failure")
 
+    broken_embedder.model_metadata = {
+        "model_id": MODEL_ID,
+        "resolved_revision": MODEL_REVISION,
+        "revision_verified": True,
+    }
+
+
+    broken_embedder.embedding_config = dict(EMBEDDING_CONFIG)
+
     with pytest.raises(RuntimeError, match="embedding generation failed"):
-        _rebuild(
-            root,
-            "idx-failed",
-            _documents(),
-            broken_embedder,
-        )
+            _rebuild(
+                root,
+                "idx-failed",
+                _documents(),
+                broken_embedder,
+            )
 
     assert (root / "CURRENT.json").read_bytes() == pointer_before
 
@@ -316,3 +334,52 @@ def test_invalid_chunking_configuration_is_rejected_before_embedding(
 
     assert calls == []
     assert not (root / "CURRENT.json").exists()
+
+
+@pytest.mark.parametrize(
+    "overrides, expected_message",
+    [
+        (
+            {"embedding_model_id": "test/wrong-embedder"},
+            "declared embedding model ID",
+        ),
+        (
+            {"embedding_model_revision": "b" * 40},
+            "declared embedding revision",
+        ),
+        (
+            {"embedding_config": {**EMBEDDING_CONFIG, "dimension": 9}},
+            "declared document embedding config",
+        ),
+    ],
+)
+def test_rebuild_rejects_unverified_declared_identity_before_embedding(
+    tmp_path,
+    overrides,
+    expected_message,
+):
+    root = tmp_path / "indexes"
+    calls = []
+
+    kwargs = {
+        "index_id": "idx-invalid-identity",
+        "documents": _documents(),
+        "embed_fn": _embedder(calls),
+        "embedding_model_id": MODEL_ID,
+        "embedding_model_revision": MODEL_REVISION,
+        "embedding_config": EMBEDDING_CONFIG,
+        "sparse_config": SPARSE_CONFIG,
+        "created_at_utc": CREATED_AT,
+    }
+    kwargs.update(overrides)
+
+    with pytest.raises(ValueError, match=expected_message):
+        store.rebuild_and_activate_index_snapshot(root, **kwargs)
+
+    # Identity mismatch must be rejected before embedding inference.
+    assert calls == []
+
+    # No index directories or active pointer should be created.
+    assert not (root / "CURRENT.json").exists()
+    assert not (root / "staging").exists()
+    assert not (root / "versions").exists()

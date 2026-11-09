@@ -570,3 +570,140 @@ print(
     assert result["index_id"] == "idx-fresh-process"
     assert set(result["counts"]) == {"bm25", "dense", "hybrid"}
     assert all(count > 0 for count in result["counts"].values())
+
+
+def test_version_promotion_failure_preserves_current_and_staged_snapshot(
+    tmp_path,
+    monkeypatch,
+):
+    root = tmp_path / "indexes"
+
+    _activate(root, "idx-one")
+    pointer_before = (root / "CURRENT.json").read_bytes()
+
+    staged = _build_staged(root, "idx-two")
+    version_dir = root / "versions" / "idx-two"
+
+    real_replace = store.os.replace
+
+    def fail_version_promotion(source, destination):
+        if Path(destination) == version_dir:
+            raise OSError("simulated version promotion failure")
+
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(store.os, "replace", fail_version_promotion)
+
+    with pytest.raises(OSError, match="simulated version promotion failure"):
+        store.activate_index_snapshot(root, staged)
+
+    assert (root / "CURRENT.json").read_bytes() == pointer_before
+    assert store.load_current_index_snapshot(
+        root).manifest["index_id"] == "idx-one"
+
+    assert not version_dir.exists()
+    assert staged.is_dir()
+
+    staged_snapshot = store.load_index_snapshot(staged)
+    assert staged_snapshot.manifest["index_id"] == "idx-two"
+
+
+def test_build_and_activate_promotion_failure_preserves_current_and_cleans_staging(
+    tmp_path,
+    monkeypatch,
+):
+    root = tmp_path / "indexes"
+
+    _activate(root, "idx-one")
+    pointer_before = (root / "CURRENT.json").read_bytes()
+
+    documents, chunks = _corpus("idx-two")
+    version_dir = root / "versions" / "idx-two"
+
+    real_replace = store.os.replace
+
+    def fail_version_promotion(source, destination):
+        if Path(destination) == version_dir:
+            raise OSError("simulated version promotion failure")
+
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(store.os, "replace", fail_version_promotion)
+
+    with pytest.raises(OSError, match="simulated version promotion failure"):
+        store.build_and_activate_index_snapshot(
+            root,
+            **_build_args("idx-two", documents, chunks, _embedder()),
+        )
+
+    assert (root / "CURRENT.json").read_bytes() == pointer_before
+    assert store.load_current_index_snapshot(
+        root).manifest["index_id"] == "idx-one"
+
+    assert not version_dir.exists()
+    assert list((root / "staging").iterdir()) == []
+
+
+def test_incomplete_orphan_staging_does_not_affect_active_snapshot_or_new_build(
+    tmp_path,
+):
+    root = tmp_path / "indexes"
+
+    _activate(root, "idx-one")
+    pointer_before = (root / "CURRENT.json").read_bytes()
+
+    orphan = root / "staging" / ".idx-crashed.manual" / "snapshot"
+    orphan.mkdir(parents=True)
+    partial_artifact = orphan / "partial.tmp"
+    partial_artifact.write_bytes(b"incomplete snapshot")
+
+    assert (
+        store.load_current_index_snapshot(root).manifest["index_id"]
+        == "idx-one"
+    )
+    assert (root / "CURRENT.json").read_bytes() == pointer_before
+
+    _activate(root, "idx-two")
+
+    assert (
+        store.load_current_index_snapshot(root).manifest["index_id"]
+        == "idx-two"
+    )
+
+    # A successful build must not delete another build's orphan directory.
+    assert orphan.is_dir()
+    assert partial_artifact.read_bytes() == b"incomplete snapshot"
+
+
+def test_older_immutable_versions_remain_available_for_explicit_rollback(
+    tmp_path,
+):
+    root = tmp_path / "indexes"
+
+    first = _activate(root, "idx-one", "alpha beta gamma")
+    second = _activate(root, "idx-two", "delta epsilon zeta")
+    third = _activate(root, "idx-three", "eta theta iota")
+
+    expected_manifests = {
+        "idx-one": (first.path / "manifest.json").read_bytes(),
+        "idx-two": (second.path / "manifest.json").read_bytes(),
+        "idx-three": (third.path / "manifest.json").read_bytes(),
+    }
+
+    for index_id, manifest_bytes in expected_manifests.items():
+        version_dir = root / "versions" / index_id
+
+        assert version_dir.is_dir()
+        assert (version_dir / "manifest.json").read_bytes() == manifest_bytes
+
+    recovered = store.rollback_index_snapshot(root, index_id="idx-one")
+
+    assert recovered.manifest["index_id"] == "idx-one"
+    assert (
+        store.load_current_index_snapshot(root).manifest["index_id"]
+        == "idx-one"
+    )
+
+    # Explicit rollback must not delete the other immutable versions.
+    assert (root / "versions" / "idx-two").is_dir()
+    assert (root / "versions" / "idx-three").is_dir()
