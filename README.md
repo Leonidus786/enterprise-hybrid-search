@@ -12,37 +12,38 @@ The project focuses on making retrieval behavior measurable and inspectable: det
 
 ## Project status
 
-**Latest local verification: 10 November 2026**
+**Latest local verification: 11 November 2026**
 
-| Area | Current status |
-| --- | --- |
-| Retrieval | BM25 sparse retrieval, exact Dense cosine search, RRF fusion, and optional Cross-Encoder reranking are implemented. |
-| Ingestion | JSONL document loading, optional source/title/metadata fields, revision-aware embedding caching, deterministic document/chunk identities, and duplicate document-ID validation are implemented. |
-| Persistent indexing | Immutable versioned snapshots use `documents.jsonl`, `chunks.jsonl`, `vectors.npy`, a validated manifest, and artifact checksums. |
-| Snapshot lifecycle | Snapshot loading, persisted DenseIndex initialization, HybridPipeline reconstruction, atomic activation, and explicit rollback are implemented and tested. |
-| Full rebuild | Deterministic full-corpus rebuild sorts documents by `doc_id`, regenerates chunks, and activates only after snapshot validation. |
-| Incremental lifecycle | Insert, update, and delete APIs are implemented. Insert/update embed only affected document chunks; unaffected vectors are reused. |
-| Idempotency | Rebuild/insert/update/delete request fingerprints are stored in operation-aware manifest schema v2. Exact active retries, conflicting requests, and inactive-version protection are tested. |
-| Failure recovery | Failure-path tests cover embedding/build, artifact-write, version-promotion, pointer-replacement, invalid staged snapshot, corrupt-active rollback, and orphan-staging isolation. Automatic crash recovery and orphan cleanup are not implemented. Immutable versions are retained; automatic pruning is not implemented. |
-| Evaluation | Document- and chunk-level evaluation, per-query traces, provenance, statistical comparison, and latency tooling are implemented. |
-| Tests | **578 tests passed** in the local Windows test run on 10 November 2026 (`11.12s`). This is local regression evidence, not external CI or deployment evidence. |
-| Product surface | Hosted API, grounded RAG answer generation, authentication, multi-tenant access control, and a complete interviewer-facing demo are not yet implemented. |
+| Area                  | Current status                                                                                                                                                                                                                                                                                                            |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Retrieval             | BM25 sparse retrieval, exact Dense cosine search, RRF fusion, and optional Cross-Encoder reranking are implemented.                                                                                                                                                                                                       |
+| Ingestion             | JSONL document loading, optional source/title/metadata fields, revision-aware embedding caching, deterministic document/chunk identities, and duplicate document-ID validation are implemented.                                                                                                                           |
+| Persistent indexing   | Immutable versioned snapshots use `documents.jsonl`, `chunks.jsonl`, `vectors.npy`, a validated manifest, and artifact checksums.                                                                                                                                                                                         |
+| Snapshot lifecycle    | Snapshot loading, persisted DenseIndex initialization, HybridPipeline reconstruction, atomic activation, and explicit rollback are implemented and tested.                                                                                                                                                                |
+| Full rebuild          | Deterministic full-corpus rebuild sorts documents by `doc_id`, regenerates chunks, and activates only after snapshot validation.                                                                                                                                                                                          |
+| Incremental lifecycle | Insert, update, and delete APIs are implemented. Insert/update embed only affected document chunks; unaffected vectors are reused.                                                                                                                                                                                        |
+| Idempotency           | Rebuild/insert/update/delete request fingerprints are stored in operation-aware manifest schema v2. Exact active retries, conflicting requests, and inactive-version protection are tested.                                                                                                                               |
+| Failure recovery      | Failure-path tests cover embedding/build, artifact-write, version-promotion, pointer-replacement, invalid staged snapshot, corrupt-active rollback, and orphan-staging isolation. Automatic crash recovery and orphan cleanup are not implemented. Immutable versions are retained; automatic pruning is not implemented. |
+| Evaluation            | Document- and chunk-level evaluation, per-query traces, provenance, statistical comparison, and latency tooling are implemented.                                                                                                                                                                                          |
+| Tests                 | **579 tests passed** in the local Windows test run on 11 November 2026 (`9.58s`). This is local regression evidence, not external CI or deployment evidence.                                                                                                                                                             |
+| Product surface       | Hosted API, grounded RAG answer generation, authentication, multi-tenant access control, and a complete interviewer-facing demo are not yet implemented.                                                                                                                                                                  |
 
 ### Latest test evidence
 
-The following local Windows regression gates were observed on 10 November 2026:
+The following local Windows regression gates were recorded; dates are shown per run:
 
-| Regression gate | Result |
-| --- | --- |
-| Activation test module | 21 passed in 2.17s |
-| Phase 1 indexing suite (9 modules) | 174 passed in 8.30s |
-| Full project suite | **578 passed in 11.12s** |
+| Regression gate                    | Result                   |
+| ---------------------------------- | ------------------------ |
+| Activation test module             | 21 passed in 2.17s (10 Nov 2026) |
+| Phase 1 indexing suite (10 modules) | 175 passed in 5.67s (11 Nov 2026) |
+| Full project suite                 | **579 passed in 9.58s** |
 
-These suites overlap; their test counts must not be added together. `git diff --check` completed without whitespace errors. Git emitted only CRLF-to-LF normalization warnings for `src/hs/index_store.py` and `tests/test_index_rebuild.py.
+These suites overlap; their test counts must not be added together. `git diff --check` completed without whitespace errors on tracked diffs. The untracked lifecycle integration test was separately syntax-checked and checked for trailing whitespace.
 
 These are local regression results, not evidence of external CI, clean-clone installation, deployment, load testing, or production readiness.
 
-**Acceptance status:** Steps 5.1–5.6 have implementation and regression-test evidence. Steps 5.5 and 5.6 are accepted locally. Step 5.7 and final Phase 1 acceptance remain pending.
+**Acceptance status:** Steps 5.1–5.7 are implemented and accepted locally with regression evidence. Phase 1 closure criteria passed on 11 November 2026; the closure commit records the formal freeze. Deferred ingestion items are explicitly documented below.
+
 ## What the project includes
 
 - **BM25 sparse retrieval:** Token-based retrieval with Lucene-style inverse document frequency, term-frequency saturation, and document-length normalisation.
@@ -134,12 +135,12 @@ A persisted `HybridPipeline` reconstructs BM25 from stored chunks and initialize
 
 ### Lifecycle operations
 
-| Operation | Expected behavior |
-| --- | --- |
-| Rebuild | Sort the input corpus deterministically, regenerate chunks and vectors, and activate a new immutable snapshot. An exact active retry returns the existing snapshot without embedding again. |
-| Insert | Embed only the inserted document's chunks and reuse existing vectors. An exact active retry does not embed again. |
-| Update | Replace one document revision, embed its new chunks, and reuse vectors for unchanged documents. An exact active retry does not embed again. |
-| Delete | Remove the selected document and its vector rows while preserving unaffected vectors. An exact active retry returns the existing snapshot without reactivation. |
+| Operation | Expected behavior                                                                                                                                                                           |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Rebuild   | Sort the input corpus deterministically, regenerate chunks and vectors, and activate a new immutable snapshot. An exact active retry returns the existing snapshot without embedding again. |
+| Insert    | Embed only the inserted document's chunks and reuse existing vectors. An exact active retry does not embed again.                                                                           |
+| Update    | Replace one document revision, embed its new chunks, and reuse vectors for unchanged documents. An exact active retry does not embed again.                                                 |
+| Delete    | Remove the selected document and its vector rows while preserving unaffected vectors. An exact active retry returns the existing snapshot without reactivation.                             |
 
 The mutation APIs create new immutable versions rather than overwriting existing snapshots. Activation currently assumes a **single writer**. Cross-process writer locking is not implemented; callers must serialize concurrent writers.
 
@@ -169,10 +170,10 @@ uv sync --extra models --extra dev
 uv run python -m pytest -q
 ```
 
-Latest recorded local result (10 November 2026):
+Latest recorded local result (11 November 2026):
 
 ```text
-578 passed in 11.12s
+579 passed in 9.58s
 ```
 
 Test counts and runtime can change as the repository evolves and depend on the local environment. This result is not a substitute for running the suite on the exact checkout being evaluated.
@@ -201,10 +202,10 @@ The recorded project documentation notes that the real-model runner initializes 
 
 The recorded model revisions are:
 
-| Component | Model | Pinned revision in the recorded SciFact run |
-| --- | --- | --- |
-| Embeddings | `BAAI/bge-small-en-v1.5` | `5c38ec7c405ec4b44b94cc5a9bb96e735b38267a` |
-| Cross-Encoder | `cross-encoder/ms-marco-MiniLM-L-6-v2` | `233902d25c440f23af6f7d6e94d2946bac0bee0a` |
+| Component     | Model                                  | Pinned revision in the recorded SciFact run |
+| ------------- | -------------------------------------- | ------------------------------------------- |
+| Embeddings    | `BAAI/bge-small-en-v1.5`               | `5c38ec7c405ec4b44b94cc5a9bb96e735b38267a`  |
+| Cross-Encoder | `cross-encoder/ms-marco-MiniLM-L-6-v2` | `233902d25c440f23af6f7d6e94d2946bac0bee0a`  |
 
 The CLI supports explicit model revisions. See the pinned evaluation command below for a reproducible command shape.
 
@@ -292,11 +293,11 @@ The line-continuation character `^` is for Windows CMD. On shells that use a dif
 
 The evaluation CLI supports the following Cross-Encoder settings. The options affect reranking when `hybrid_rerank` is evaluated:
 
-| Option | Purpose | Current default |
-| --- | --- | --- |
-| `--reranker-batch-size` | Number of query/document pairs per inference batch | `8` |
-| `--reranker-device` | Explicit inference device, such as `cpu` or `cuda` | Automatic (`None`) |
-| `--reranker-max-length` | Override the model's maximum input length | Model setting (`None`) |
+| Option                  | Purpose                                            | Current default        |
+| ----------------------- | -------------------------------------------------- | ---------------------- |
+| `--reranker-batch-size` | Number of query/document pairs per inference batch | `8`                    |
+| `--reranker-device`     | Explicit inference device, such as `cpu` or `cuda` | Automatic (`None`)     |
+| `--reranker-max-length` | Override the model's maximum input length          | Model setting (`None`) |
 
 Example for a CPU run:
 
@@ -352,12 +353,12 @@ The recorded pinned-model evaluation used the BEIR SciFact test split:
 
 </details>
 
-| Strategy | Precision@10 | Recall@10 | Recall@100 | Candidate Recall@50 | MRR@10 | nDCG@10 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| BM25 | 0.0867 | 0.7816 | 0.8859 | 0.8704 | 0.6340 | 0.6646 |
-| Dense | 0.0937 | 0.8296 | 0.9433 | 0.9283 | 0.6725 | 0.7057 |
-| Hybrid (BM25 + Dense, RRF) | 0.0933 | 0.8331 | 0.9617 | 0.9406 | 0.6765 | 0.7103 |
-| Hybrid + Cross-Encoder | 0.0920 | 0.8211 | 0.9617 | 0.9406 | 0.6568 | 0.6901 |
+| Strategy                   | Precision@10 | Recall@10 | Recall@100 | Candidate Recall@50 | MRR@10 | nDCG@10 |
+| -------------------------- | -----------: | --------: | ---------: | ------------------: | -----: | ------: |
+| BM25                       |       0.0867 |    0.7816 |     0.8859 |              0.8704 | 0.6340 |  0.6646 |
+| Dense                      |       0.0937 |    0.8296 |     0.9433 |              0.9283 | 0.6725 |  0.7057 |
+| Hybrid (BM25 + Dense, RRF) |       0.0933 |    0.8331 |     0.9617 |              0.9406 | 0.6765 |  0.7103 |
+| Hybrid + Cross-Encoder     |       0.0920 |    0.8211 |     0.9617 |              0.9406 | 0.6568 |  0.6901 |
 
 ### Interpretation
 
@@ -370,12 +371,12 @@ The recorded pinned-model evaluation used the BEIR SciFact test split:
 
 A separate latency run used 30 distinct SciFact queries, five measured trials per strategy (150 samples per strategy), and 10 warm-up queries excluded from the measured samples. Model loading was outside the timed samples. Query embedding cache was disabled, document embedding cache was enabled, and strategy order rotated. The recorded environment was CPU-only (8 logical CPU cores, 4 PyTorch threads; CUDA unavailable).
 
-| Strategy | Total latency P50 (ms) | P95 (ms) | P99 (ms) |
-| --- | ---: | ---: | ---: |
-| BM25 | 60.67 | 123.02 | 179.31 |
-| Dense | 130.22 | 314.60 | 471.96 |
-| Hybrid | 188.75 | 417.10 | 518.09 |
-| Hybrid + Cross-Encoder | 8,845.14 | 12,718.23 | 15,545.64 |
+| Strategy               | Total latency P50 (ms) |  P95 (ms) |  P99 (ms) |
+| ---------------------- | ---------------------: | --------: | --------: |
+| BM25                   |                  60.67 |    123.02 |    179.31 |
+| Dense                  |                 130.22 |    314.60 |    471.96 |
+| Hybrid                 |                 188.75 |    417.10 |    518.09 |
+| Hybrid + Cross-Encoder |               8,845.14 | 12,718.23 | 15,545.64 |
 
 For the recorded reranking run, the Cross-Encoder component itself had P50 latency of approximately **8,667.56 ms** and P95 of approximately **12,446.21 ms**. On this CPU environment, the hybrid-plus-reranker total P50 was about **46.9 times** the Hybrid P50. This is a measurement of the specific benchmark setup, not a universal multiplier or a production service SLA.
 
@@ -384,10 +385,10 @@ For the recorded reranking run, the Cross-Encoder component itself had P50 laten
 The candidate-depth diagnostic compares `candidate_k` values of 10, 20, and 50 on the first 30 of 300 SciFact queries. Each setting used one evaluation pass per query and strategy. Candidate recall increased as the pool grew, but the reranker did not improve the displayed ranking metrics and its CPU cost increased substantially with candidate depth.
 
 | Candidate K | Hybrid Candidate Recall@K | Reranked MRR@10 | Reranked nDCG@10 | Reranker component P50 (ms) |
-| ---: | ---: | ---: | ---: | ---: |
-| 10 | 0.843 | 0.679 | 0.721 | 1,166.90 |
-| 20 | 0.893 | 0.681 | 0.723 | 2,576.71 |
-| 50 | 0.967 | 0.675 | 0.711 | 7,279.13 |
+| ----------: | ------------------------: | --------------: | ---------------: | --------------------------: |
+|          10 |                     0.843 |           0.679 |            0.721 |                    1,166.90 |
+|          20 |                     0.893 |           0.681 |            0.723 |                    2,576.71 |
+|          50 |                     0.967 |           0.675 |            0.711 |                    7,279.13 |
 
 These are exploratory 30-query, single-pass comparisons—not repeated latency percentiles and not a final statistical claim. The full diagnostic, including the paired Hybrid comparison and end-to-end timings, is in [`docs/RERANKER_CANDIDATE_DEPTH_DIAGNOSTIC.md`](docs/RERANKER_CANDIDATE_DEPTH_DIAGNOSTIC.md).
 
@@ -411,8 +412,8 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/DECISIONS.md`](doc
 
 ## Current limitations
 
-- The current document loader supports JSONL documents with `doc_id` and `text`, plus optional `source`, `title`, and `metadata`. A standalone TXT/PDF upload workflow is not implemented.
-- Chunking supports configurable word-window chunks and whole-document mode. Token-aware or character-bounded chunking has not been implemented.
+- The current document loader supports JSONL documents with `doc_id` and `text`, plus optional `source`, `title`, and `metadata`. A standalone TXT/PDF loader or upload workflow is not implemented.
+- Chunking supports configurable word-window chunks and whole-document mode. Token-aware or character-bounded chunking has not been implemented. `max_text_chars` limits source-document input length; it does not impose a per-chunk character limit. The document schema has no typed timestamp fields; manifest `created_at_utc` records index-snapshot creation time.
 - Failure-injection tests cover handled build/activation failures and orphan-staging isolation. They do not establish automatic process-crash recovery or orphan cleanup. All immutable versions are currently retained; automatic pruning and configurable retention are not implemented.
 - Activation uses a documented single-writer assumption; cross-process locking is not provided.
 - The evaluation CLI evaluates all four strategies when no explicit `--strategies` list is supplied. The Cross-Encoder adapter may still be initialized even when reranking is excluded from the requested strategy list; lazy loading remains to be verified and improved.
@@ -429,9 +430,9 @@ The roadmap is ordered to finish and freeze the local retrieval/index lifecycle 
 ### Phase 1 — Close persistent indexing
 
 1. **Step 5.6: failure recovery and immutable-version safety — accepted.** Tests cover embedding/build failure, artifact-write failure, version-promotion failure, pointer-replacement failure, invalid staged snapshots, rollback from a corrupt active snapshot, and orphan-staging isolation. Immutable versions are retained; automatic pruning, automatic crash recovery, and orphan cleanup are not implemented.
-2. **Step 5.7: complete lifecycle regression.** Test rebuild → insert → update → delete → fresh-process reload → search, including corpus integrity, vector-row alignment, deterministic ordering, and rollback behavior.
-3. **Phase 1 acceptance review.** Review the complete diff, run `git diff --check`, focused mutation tests, and the full suite. Document the single-writer limitation and recovery/retention semantics before calling Phase 1 frozen.
-4. **Ingestion backlog.** Verify standalone TXT loading, typed timestamp metadata, malformed-document handling, source provenance, and character/token-based chunk limits. These items are not marked complete.
+2. **Step 5.7: complete lifecycle regression — accepted.** The integration test covers rebuild → insert → update → delete → fresh-process reload → search, including corpus integrity, vector-row alignment, affected-only embedding, unchanged-vector preservation, updated revisions, deleted-document exclusion, and immutable prior snapshots.
+3. **Final Phase 1 freeze review — complete (11 November 2026).** DenseIndex/query-vector compatibility, lifecycle integration, tracked source state, README evidence, and workspace state were reviewed. The full project suite passed with 579 tests in 9.58s. The closure commit records the formal Phase 1 freeze.
+4. **Ingestion backlog — disposition recorded.** Already implemented and tested: malformed JSONL and field validation, duplicate document-ID rejection, empty-corpus handling, and basic `source`/`title`/`metadata` propagation into revision identity. Deferred: standalone TXT/PDF loading or upload, typed document timestamp fields, and character-bounded or tokenizer-aware chunking. The manifest `created_at_utc` is an index-snapshot timestamp, not a document timestamp. Define the document timestamp contract before adding schema fields.
 
 ### Phase 2 — Retrieval refinement
 
@@ -463,13 +464,13 @@ The roadmap is ordered to finish and freeze the local retrieval/index lifecycle 
 
 Keep retrieval/RAG logic independent of the HTTP transport and expose:
 
-| Method | Endpoint | Purpose |
-| --- | --- | --- |
-| GET | `/health` | Process health |
-| GET | `/ready` | Dependency/model readiness |
-| POST | `/v1/search` | Hybrid retrieval |
-| POST | `/v1/compare` | BM25 / Dense / Hybrid comparison |
-| POST | `/v1/answer` | Grounded RAG answer |
+| Method | Endpoint      | Purpose                          |
+| ------ | ------------- | -------------------------------- |
+| GET    | `/health`     | Process health                   |
+| GET    | `/ready`      | Dependency/model readiness       |
+| POST   | `/v1/search`  | Hybrid retrieval                 |
+| POST   | `/v1/compare` | BM25 / Dense / Hybrid comparison |
+| POST   | `/v1/answer`  | Grounded RAG answer              |
 
 Add request/response schemas, validation, stable error contracts, startup initialization, timeouts, request limits, structured logs, request IDs, and stage timings.
 
