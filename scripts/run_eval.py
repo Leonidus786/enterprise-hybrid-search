@@ -231,7 +231,7 @@ def save_results_json(
         },
         "fake_models": args.fake,
         "embedding_model": "fake-word-hash-128-v1" if args.fake else "BAAI/bge-small-en-v1.5",
-        "reranker_model": None if args.fake else "cross-encoder/ms-marco-MiniLM-L-6-v2",
+        "reranker_model": None if args.fake or "hybrid_rerank" not in args.strategies else "cross-encoder/ms-marco-MiniLM-L-6-v2",
         "embedding_revision_requested": getattr(args, "embedding_revision", None),
         "reranker_revision_requested": getattr(args, "reranker_revision", None),
         "reranker_inference": {
@@ -302,6 +302,78 @@ def save_results_json(
     print(f"Results JSON saved: {output_path}")
 
 
+def _load_eval_models(args):
+    """Load only the models required by the requested evaluation strategies."""
+    reranker_requested = "hybrid_rerank" in args.strategies
+
+    if args.fake:
+        embed, fake_score = _fakes()
+        score = fake_score if reranker_requested else None
+        embedding_model_id = "fake-word-hash-128-v1"
+        embedding_metadata = {
+            "model_id": embedding_model_id,
+            "requested_revision": None,
+            "resolved_revision": "fake-word-hash-128-v1",
+            "revision_status": "not_applicable_fake_model",
+        }
+        if reranker_requested:
+            reranker_metadata = {
+                "model_id": "fake-token-overlap-scorer-v1",
+                "requested_revision": None,
+                "resolved_revision": "fake-token-overlap-scorer-v1",
+                "revision_status": "not_applicable_fake_model",
+            }
+        else:
+            reranker_metadata = {
+                "model_id": None,
+                "requested_revision": None,
+                "resolved_revision": None,
+                "revision_status": "not_requested",
+            }
+    else:
+        from hs.models import sentence_embedder
+
+        embed = sentence_embedder(revision=args.embedding_revision)
+        embedding_model_id = "BAAI/bge-small-en-v1.5"
+        embedding_metadata = getattr(embed, "model_metadata", {
+            "model_id": embedding_model_id,
+            "requested_revision": args.embedding_revision,
+            "resolved_revision": None,
+            "revision_status": "unknown_model_loader_metadata_unavailable",
+        })
+
+        score = None
+        if reranker_requested:
+            # Import and instantiate the CrossEncoder only for hybrid_rerank.
+            from hs.models import cross_encoder_scorer
+
+            score = cross_encoder_scorer(
+                revision=args.reranker_revision,
+                batch_size=args.reranker_batch_size,
+                device=args.reranker_device,
+                max_length=args.reranker_max_length,
+            )
+            reranker_metadata = getattr(score, "model_metadata", {
+                "model_id": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+                "requested_revision": args.reranker_revision,
+                "resolved_revision": None,
+                "revision_status": "unknown_model_loader_metadata_unavailable",
+            })
+        else:
+            reranker_metadata = {
+                "model_id": None,
+                "requested_revision": None,
+                "resolved_revision": None,
+                "revision_status": "not_requested",
+            }
+
+    model_metadata = {
+        "embedding": embedding_metadata,
+        "reranker": reranker_metadata,
+    }
+    return embed, score, embedding_model_id, model_metadata
+
+
 def main(argv=None):
     args = build_parser().parse_args(argv)
     if args.k < 1:
@@ -323,47 +395,7 @@ def main(argv=None):
     if args.chunk_overlap < 0:
         raise ValueError("--chunk-overlap must be >= 0")
 
-    if args.fake:
-        embed, score = _fakes()
-        embedding_model_id = "fake-word-hash-128-v1"
-        model_metadata = {
-            "embedding": {
-                "model_id": embedding_model_id,
-                "requested_revision": None,
-                "resolved_revision": "fake-word-hash-128-v1",
-                "revision_status": "not_applicable_fake_model",
-            },
-            "reranker": {
-                "model_id": "fake-token-overlap-scorer-v1",
-                "requested_revision": None,
-                "resolved_revision": "fake-token-overlap-scorer-v1",
-                "revision_status": "not_applicable_fake_model",
-            },
-        }
-    else:
-        from hs.models import cross_encoder_scorer, sentence_embedder
-        embed = sentence_embedder(revision=args.embedding_revision)
-        score = cross_encoder_scorer(
-            revision=args.reranker_revision,
-            batch_size=args.reranker_batch_size,
-            device=args.reranker_device,
-            max_length=args.reranker_max_length,
-        )
-        embedding_model_id = "BAAI/bge-small-en-v1.5"
-        model_metadata = {
-            "embedding": getattr(embed, "model_metadata", {
-                "model_id": embedding_model_id,
-                "requested_revision": args.embedding_revision,
-                "resolved_revision": None,
-                "revision_status": "unknown_model_loader_metadata_unavailable",
-            }),
-            "reranker": getattr(score, "model_metadata", {
-                "model_id": "cross-encoder/ms-marco-MiniLM-L-6-v2",
-                "requested_revision": args.reranker_revision,
-                "resolved_revision": None,
-                "revision_status": "unknown_model_loader_metadata_unavailable",
-            }),
-        }
+    embed, score, embedding_model_id, model_metadata = _load_eval_models(args)
 
     cache_enabled = False
     cache_disabled_reason = None
