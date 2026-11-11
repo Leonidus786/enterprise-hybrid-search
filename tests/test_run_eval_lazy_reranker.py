@@ -101,3 +101,16 @@ def test_fake_runtime_keeps_fake_reranker_when_hybrid_rerank_is_selected():
     assert score is not None
     assert metadata["reranker"]["model_id"] == "fake-token-overlap-scorer-v1"
     assert metadata["reranker"]["revision_status"] == "not_applicable_fake_model"
+
+
+def test_cli_defaults_to_reranker_off_but_keeps_explicit_opt_in():
+    parser = run_eval.build_parser()
+
+    defaults = parser.parse_args([])
+    assert defaults.strategies == ["bm25", "dense", "hybrid"]
+    assert defaults.strategies == run_eval.DEFAULT_STRATEGIES
+    assert "hybrid_rerank" not in defaults.strategies
+    assert "hybrid_rerank" in run_eval.STRATEGIES
+
+    explicit = parser.parse_args(["--strategies", "hybrid_rerank"])
+    assert explicit.strategies == ["hybrid_rerank"]

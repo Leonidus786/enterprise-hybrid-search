@@ -33,6 +33,7 @@ from hs.provenance import build_run_provenance  # noqa: E402
 
 BGE_PREFIX = "Represent this sentence for searching relevant passages: "
 STRATEGIES = ["bm25", "dense", "hybrid", "hybrid_rerank"]
+DEFAULT_STRATEGIES = ["bm25", "dense", "hybrid"]
 
 
 def _embedding_cache_identity(model_metadata, *, fake=False):
@@ -136,7 +137,10 @@ def build_parser():
         help="Evaluate only the first N queries",
     )
     parser.add_argument(
-        "--strategies", nargs="+", choices=STRATEGIES, default=STRATEGIES,
+        "--strategies",
+        nargs="+",
+        choices=STRATEGIES,
+        default=DEFAULT_STRATEGIES.copy(),
         help="Strategies to evaluate",
     )
     parser.add_argument("--output", default=None, help="Optional path to save benchmark results as JSON")

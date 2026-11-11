@@ -68,7 +68,8 @@ def test_main_populates_the_cache_and_still_prints_the_table(tmp_path, capsys):
     cache = tmp_path / "c"
     _script().main(_argv("--cache-dir", str(cache)))
     out = capsys.readouterr().out
-    assert "bm25" in out and "hybrid_rerank" in out
+    assert "Strategies: bm25, dense, hybrid" in out
+    assert "hybrid_rerank" not in out
     assert any(p.is_file() for p in cache.rglob("*"))
 
 
