@@ -13,13 +13,21 @@
     "dataset": "BEIR SciFact test",
     "no_chunk": true,
     "level": "doc",
-    "no_cache": true
+    "no_cache": true,
+    "corpus": "data/scifact_test/corpus.jsonl",
+    "queries": "data/scifact_test/queries.json",
+    "no_bge_prefix": false
   },
   "strategies": [
     "bm25",
     "dense",
     "hybrid",
     "hybrid_rerank"
+  ],
+  "default_strategies": [
+    "bm25",
+    "dense",
+    "hybrid"
   ],
   "sparse": {
     "bm25_k1": 1.5,
@@ -44,5 +52,31 @@
       "device": null,
       "max_length": null
     }
+  },
+  "latency_defaults": {
+    "corpus": "data/scifact_test/corpus.jsonl",
+    "queries": "data/scifact_test/queries.json",
+    "level": "doc",
+    "k": 100,
+    "candidate_k": 50,
+    "reranker_batch_size": 8,
+    "reranker_device": null,
+    "reranker_max_length": null,
+    "trials": 5,
+    "warmup_queries": 10,
+    "max_queries": null,
+    "strategies": [
+      "bm25",
+      "dense",
+      "hybrid",
+      "hybrid_rerank"
+    ],
+    "no_chunk": false,
+    "chunk_size": 200,
+    "chunk_overlap": 40,
+    "no_bge_prefix": false,
+    "cache_dir": ".cache/embeddings",
+    "embedding_revision": "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a",
+    "reranker_revision": "233902d25c440f23af6f7d6e94d2946bac0bee0a"
   }
 }

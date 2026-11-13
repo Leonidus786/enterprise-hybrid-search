@@ -130,5 +130,5 @@ class DenseIndex:
         if not np.isfinite(q).all():
             raise ValueError("embedder returned non-finite values for the query")
         sims = self.matrix @ _normalize(q)[0]
-        order = np.argsort(-sims)[:k]
+        order = np.argsort(-sims, kind="stable")[:k]
         return [(self.chunks[i].chunk_id, float(sims[i])) for i in order]

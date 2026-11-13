@@ -36,8 +36,27 @@ Never write a number here you did not measure.
 - bge-*-en-v1.5 retrieval uses a query-side prefix ("Represent this sentence for searching relevant passages: ").
 - Decision: prefix queries only, never documents (`query_prefix`). Evidence: TODO compare with/without on my queries.
 
-## ADR-007 candidate_k sensitivity  [PROVISIONAL]
-- hybrid_rerank only reranks `candidate_k` fused chunks (default 50). If many of them belong to one doc, doc-level
-  eval can return < k docs, so its numbers depend on candidate_k.
-- Experiment to run: `python scripts/run_eval.py --candidate-k 20|50|100|200`, record MRR/nDCG and p95 latency for each.
-- Evidence: TODO (the cost/quality curve is the interview answer to "why 50?").
+## ADR-007 Candidate depth sensitivity  [PROVISIONAL]
+- Problem: hybrid_rerank reranks only candidate_k fused candidates; results depend on candidate depth.
+- Decision: Keep candidate_k=50 as the current default for the optional reranker, but do not claim that 50 is optimal. hybrid_rerank remains opt-in and excluded from default evaluation strategies.
+- Experiment status: COMPLETE for K=10, 20, and 50 on all 300 SciFact queries.
+- Quality evidence: reranking did not improve aggregate MRR@10 or nDCG@10 at any tested depth. At K=20, Recall@10 was 0.84444 versus 0.83306 for Hybrid, while MRR@10 and nDCG@10 were lower. K=10 recall was unchanged; K=50 reranked recall was lower.
+- Candidate Recall@K increased with candidate depth, but these depth-specific metrics are not interchangeable with Recall@100.
+- Dedicated latency evidence: five trials, ten excluded warmups, 30 queries per trial, 150 samples per strategy, rotating strategy order, and uncached query embeddings. Within-run total P50 slowdown ratios were approximately 13.65x at K=10, 20.96x at K=20, and 49.7x at K=50.
+- Qualification: K=10 used a cold document-embedding cache; K=20 and K=50 used a warm cache. Compare strategies within each depth only. No statistical-significance or cross-depth latency-trend claim is established.
+- Model revisions matched cached local snapshots; loaded-model commit introspection was not independently verified. K=50 quality provenance recorded a dirty worktree and must retain that qualification.
+- K=100 and K=200 were not tested. Revisit candidate depth only with target-corpus and target-hardware evidence showing a useful quality-cost trade-off.
+
+## ADR-008 Stable ranking tie-breaking  [CONFIRMED]
+- Problem: equal scores need deterministic ordering without changing ranking scores.
+- Decision: Dense ranking uses stable argsort. Sparse ranking preserves input order for equal scores, RRF preserves first-seen order, and reranking preserves incoming order for equal scores. Do not introduce an arbitrary chunk-ID tie-breaker.
+- Why: persistent lifecycle operations establish canonical document order; chunk generation is sequential; insert and update reconstruct sorted document and chunk order while aligning vector rows; delete preserves retained chunk order; snapshot serialization and loading preserve the stored chunk sequence.
+- Boundary: the low-level build_index_snapshot function preserves caller order. Direct callers remain responsible for supplying deterministic input order.
+- Evidence: four equal-score regression tests passed; final full suite passed 595 tests.
+
+## ADR-009 Evaluation and latency configuration freeze  [CONFIRMED]
+- Supported evaluation strategies are bm25, dense, hybrid, and hybrid_rerank. Default evaluation strategies are bm25, dense, and hybrid; reranking remains opt-in.
+- The canonical quality-evaluation protocol is BEIR SciFact test, document-level, no chunking, and no persistent evaluation cache.
+- The latency manifest records all 19 run_latency parser defaults, including pinned model revisions. Its required output path is excluded because it has no default.
+- Evaluation CLI revision defaults remain None; the dedicated latency runner defaults to pinned embedding and reranker revisions. These are intentionally distinct contracts.
+- Evidence: configuration contract tests passed; final full suite passed 595 tests.
