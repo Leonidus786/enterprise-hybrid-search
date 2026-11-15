@@ -1,0 +1,256 @@
+{
+  "schema_version": 1,
+  "audit": "tokenizer_only_cross_encoder_pair_truncation",
+  "inference_performed": false,
+  "candidate_source": "per_query.hybrid_rerank.<query_id>._trace.candidate_ids",
+  "pair_count": 15000,
+  "query_count": 300,
+  "corpus_document_count": 5183,
+  "model_repo": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+  "model_revision": "233902d25c440f23af6f7d6e94d2946bac0bee0a",
+  "tokenizer_class": "BertTokenizer",
+  "tokenizer_model_max_length": 512,
+  "model_max_position_embeddings": 512,
+  "audited_max_length": 512,
+  "truncation": "longest_first",
+  "input_sha256": {
+    "quality_artifact": "3357b12b389452cc80aa81a09a83616d5d3668ae0c9e3b27a1accd7a505c9972",
+    "queries": "89f248368661e4fad34f07b388939c5149ed69e77911deec48e32a85bc069489",
+    "corpus": "91af725e167cfbfcb272e77ee272233e255718b8c515e08a36cfa734c520fb97"
+  },
+  "counts": {
+    "truncated_pairs": 2197,
+    "query_side_truncated_pairs": 0,
+    "document_side_truncated_pairs": 2197,
+    "both_sides_truncated_pairs": 0
+  },
+  "tokens_dropped": {
+    "query": 0,
+    "document": 260742
+  },
+  "percentiles": {
+    "raw_pair_tokens": {
+      "50": 366.0,
+      "90": 550.0,
+      "95": 625.0,
+      "99": 851.0,
+      "100": 1970.0
+    },
+    "query_tokens": {
+      "50": 19.0,
+      "90": 34.0,
+      "95": 39.0,
+      "99": 42.0,
+      "100": 62.0
+    },
+    "document_tokens": {
+      "50": 342.0,
+      "90": 527.0,
+      "95": 600.0,
+      "99": 825.0,
+      "100": 1938.0
+    }
+  },
+  "worst_20_pairs": [
+    {
+      "query_id": "971",
+      "doc_id": "26067999",
+      "raw_pair_tokens": 1970,
+      "retained_pair_tokens": 512,
+      "query_tokens": 29,
+      "document_tokens": 1938,
+      "query_tokens_dropped": 0,
+      "document_tokens_dropped": 1458
+    },
+    {
+      "query_id": "516",
+      "doc_id": "26067999",
+      "raw_pair_tokens": 1967,
+      "retained_pair_tokens": 512,
+      "query_tokens": 26,
+      "document_tokens": 1938,
+      "query_tokens_dropped": 0,
+      "document_tokens_dropped": 1455
+    },
+    {
+      "query_id": "598",
+      "doc_id": "26067999",
+      "raw_pair_tokens": 1965,
+      "retained_pair_tokens": 512,
+      "query_tokens": 24,
+      "document_tokens": 1938,
+      "query_tokens_dropped": 0,
+      "document_tokens_dropped": 1453
+    },
+    {
+      "query_id": "137",
+      "doc_id": "26067999",
+      "raw_pair_tokens": 1959,
+      "retained_pair_tokens": 512,
+      "query_tokens": 18,
+      "document_tokens": 1938,
+      "query_tokens_dropped": 0,
+      "document_tokens_dropped": 1447
+    },
+    {
+      "query_id": "1282",
+      "doc_id": "10749308",
+      "raw_pair_tokens": 1947,
+      "retained_pair_tokens": 512,
+      "query_tokens": 26,
+      "document_tokens": 1918,
+      "query_tokens_dropped": 0,
+      "document_tokens_dropped": 1435
+    },
+    {
+      "query_id": "852",
+      "doc_id": "10749308",
+      "raw_pair_tokens": 1938,
+      "retained_pair_tokens": 512,
+      "query_tokens": 17,
+      "document_tokens": 1918,
+      "query_tokens_dropped": 0,
+      "document_tokens_dropped": 1426
+    },
+    {
+      "query_id": "1197",
+      "doc_id": "10749308",
+      "raw_pair_tokens": 1936,
+      "retained_pair_tokens": 512,
+      "query_tokens": 15,
+      "document_tokens": 1918,
+      "query_tokens_dropped": 0,
+      "document_tokens_dropped": 1424
+    },
+    {
+      "query_id": "1196",
+      "doc_id": "10749308",
+      "raw_pair_tokens": 1935,
+      "retained_pair_tokens": 512,
+      "query_tokens": 14,
+      "document_tokens": 1918,
+      "query_tokens_dropped": 0,
+      "document_tokens_dropped": 1423
+    },
+    {
+      "query_id": "641",
+      "doc_id": "10749308",
+      "raw_pair_tokens": 1933,
+      "retained_pair_tokens": 512,
+      "query_tokens": 12,
+      "document_tokens": 1918,
+      "query_tokens_dropped": 0,
+      "document_tokens_dropped": 1421
+    },
+    {
+      "query_id": "1344",
+      "doc_id": "15521377",
+      "raw_pair_tokens": 1563,
+      "retained_pair_tokens": 512,
+      "query_tokens": 35,
+      "document_tokens": 1525,
+      "query_tokens_dropped": 0,
+      "document_tokens_dropped": 1051
+    },
+    {
+      "query_id": "354",
+      "doc_id": "15521377",
+      "raw_pair_tokens": 1552,
+      "retained_pair_tokens": 512,
+      "query_tokens": 24,
+      "document_tokens": 1525,
+      "query_tokens_dropped": 0,
+      "document_tokens_dropped": 1040
+    },
+    {
+      "query_id": "239",
+      "doc_id": "15521377",
+      "raw_pair_tokens": 1537,
+      "retained_pair_tokens": 512,
+      "query_tokens": 9,
+      "document_tokens": 1525,
+      "query_tokens_dropped": 0,
+      "document_tokens_dropped": 1025
+    },
+    {
+      "query_id": "274",
+      "doc_id": "5114940",
+      "raw_pair_tokens": 1515,
+      "retained_pair_tokens": 512,
+      "query_tokens": 39,
+      "document_tokens": 1473,
+      "query_tokens_dropped": 0,
+      "document_tokens_dropped": 1003
+    },
+    {
+      "query_id": "1359",
+      "doc_id": "5114940",
+      "raw_pair_tokens": 1510,
+      "retained_pair_tokens": 512,
+      "query_tokens": 34,
+      "document_tokens": 1473,
+      "query_tokens_dropped": 0,
+      "document_tokens_dropped": 998
+    },
+    {
+      "query_id": "1086",
+      "doc_id": "5114940",
+      "raw_pair_tokens": 1504,
+      "retained_pair_tokens": 512,
+      "query_tokens": 28,
+      "document_tokens": 1473,
+      "query_tokens_dropped": 0,
+      "document_tokens_dropped": 992
+    },
+    {
+      "query_id": "589",
+      "doc_id": "5114940",
+      "raw_pair_tokens": 1502,
+      "retained_pair_tokens": 512,
+      "query_tokens": 26,
+      "document_tokens": 1473,
+      "query_tokens_dropped": 0,
+      "document_tokens_dropped": 990
+    },
+    {
+      "query_id": "1199",
+      "doc_id": "5114940",
+      "raw_pair_tokens": 1500,
+      "retained_pair_tokens": 512,
+      "query_tokens": 24,
+      "document_tokens": 1473,
+      "query_tokens_dropped": 0,
+      "document_tokens_dropped": 988
+    },
+    {
+      "query_id": "129",
+      "doc_id": "27768226",
+      "raw_pair_tokens": 1381,
+      "retained_pair_tokens": 512,
+      "query_tokens": 16,
+      "document_tokens": 1362,
+      "query_tokens_dropped": 0,
+      "document_tokens_dropped": 869
+    },
+    {
+      "query_id": "130",
+      "doc_id": "27768226",
+      "raw_pair_tokens": 1381,
+      "retained_pair_tokens": 512,
+      "query_tokens": 16,
+      "document_tokens": 1362,
+      "query_tokens_dropped": 0,
+      "document_tokens_dropped": 869
+    },
+    {
+      "query_id": "113",
+      "doc_id": "34544514",
+      "raw_pair_tokens": 1324,
+      "retained_pair_tokens": 512,
+      "query_tokens": 20,
+      "document_tokens": 1301,
+      "query_tokens_dropped": 0,
+      "document_tokens_dropped": 812
+    }
+  ]
+}

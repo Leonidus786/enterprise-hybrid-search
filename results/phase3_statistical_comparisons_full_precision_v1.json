@@ -1,0 +1,274 @@
+{
+  "schema_version": 1,
+  "analysis": "paired_per_query_bootstrap",
+  "input_artifact": {
+    "path": "E:\\ehs-phase3-results\\phase3_acceptance_final_v1.json",
+    "sha256": "3357b12b389452cc80aa81a09a83616d5d3668ae0c9e3b27a1accd7a505c9972"
+  },
+  "analysis_family": {
+    "schema_version": 1,
+    "metrics": [
+      "ndcg@10",
+      "recall@100"
+    ],
+    "pairs": [
+      [
+        "bm25",
+        "dense"
+      ],
+      [
+        "dense",
+        "hybrid"
+      ],
+      [
+        "hybrid",
+        "hybrid_rerank"
+      ]
+    ],
+    "hypotheses": 6,
+    "resamples": 10000,
+    "seed": 42,
+    "correction": "bonferroni",
+    "descriptive_only": [
+      "mrr@10"
+    ],
+    "note": "Declared before the final run; hybrid-vs-dense data was previously inspected. Not pre-registered."
+  },
+  "bootstrap": {
+    "method": "paired percentile bootstrap",
+    "sampling_unit": "query",
+    "resamples": 10000,
+    "seed": 42,
+    "queries_per_resample": 300
+  },
+  "multiple_testing": {
+    "method": "Bonferroni",
+    "family_alpha": 0.05,
+    "hypotheses": 6,
+    "adjusted_confidence": 0.9916666666666667
+  },
+  "results": [
+    {
+      "a": "bm25",
+      "b": "dense",
+      "metric": "ndcg@10",
+      "nominal": {
+        "n": 300,
+        "mean_delta": 0.04105836968719942,
+        "ci_low": 0.004409632229865398,
+        "ci_high": 0.07793148700234576,
+        "confidence_level": 0.95,
+        "wins": 82,
+        "losses": 54,
+        "ties": 164,
+        "significant": true,
+        "n_resamples": 10000,
+        "seed": 42,
+        "mode_a": "bm25",
+        "mode_b": "dense",
+        "metric": "ndcg@10"
+      },
+      "bonferroni": {
+        "n": 300,
+        "mean_delta": 0.04105836968719942,
+        "ci_low": -0.00831368188517444,
+        "ci_high": 0.09130867568804046,
+        "confidence_level": 0.9916666666666667,
+        "wins": 82,
+        "losses": 54,
+        "ties": 164,
+        "significant": false,
+        "n_resamples": 10000,
+        "seed": 42,
+        "mode_a": "bm25",
+        "mode_b": "dense",
+        "metric": "ndcg@10"
+      }
+    },
+    {
+      "a": "bm25",
+      "b": "dense",
+      "metric": "recall@100",
+      "nominal": {
+        "n": 300,
+        "mean_delta": 0.05744444444444445,
+        "ci_low": 0.021333333333333336,
+        "ci_high": 0.09444722222222218,
+        "confidence_level": 0.95,
+        "wins": 28,
+        "losses": 8,
+        "ties": 264,
+        "significant": true,
+        "n_resamples": 10000,
+        "seed": 42,
+        "mode_a": "bm25",
+        "mode_b": "dense",
+        "metric": "recall@100"
+      },
+      "bonferroni": {
+        "n": 300,
+        "mean_delta": 0.05744444444444445,
+        "ci_low": 0.009295833333333316,
+        "ci_high": 0.1068888888888889,
+        "confidence_level": 0.9916666666666667,
+        "wins": 28,
+        "losses": 8,
+        "ties": 264,
+        "significant": true,
+        "n_resamples": 10000,
+        "seed": 42,
+        "mode_a": "bm25",
+        "mode_b": "dense",
+        "metric": "recall@100"
+      }
+    },
+    {
+      "a": "dense",
+      "b": "hybrid",
+      "metric": "ndcg@10",
+      "nominal": {
+        "n": 300,
+        "mean_delta": 0.004624126399418623,
+        "ci_low": -0.023377477163026236,
+        "ci_high": 0.032892416209744625,
+        "confidence_level": 0.95,
+        "wins": 59,
+        "losses": 55,
+        "ties": 186,
+        "significant": false,
+        "n_resamples": 10000,
+        "seed": 42,
+        "mode_a": "dense",
+        "mode_b": "hybrid",
+        "metric": "ndcg@10"
+      },
+      "bonferroni": {
+        "n": 300,
+        "mean_delta": 0.004624126399418623,
+        "ci_low": -0.034958832100364906,
+        "ci_high": 0.042677594471995525,
+        "confidence_level": 0.9916666666666667,
+        "wins": 59,
+        "losses": 55,
+        "ties": 186,
+        "significant": false,
+        "n_resamples": 10000,
+        "seed": 42,
+        "mode_a": "dense",
+        "mode_b": "hybrid",
+        "metric": "ndcg@10"
+      }
+    },
+    {
+      "a": "dense",
+      "b": "hybrid",
+      "metric": "recall@100",
+      "nominal": {
+        "n": 300,
+        "mean_delta": 0.018333333333333333,
+        "ci_low": -0.0033333333333333335,
+        "ci_high": 0.04,
+        "confidence_level": 0.95,
+        "wins": 9,
+        "losses": 3,
+        "ties": 288,
+        "significant": false,
+        "n_resamples": 10000,
+        "seed": 42,
+        "mode_a": "dense",
+        "mode_b": "hybrid",
+        "metric": "recall@100"
+      },
+      "bonferroni": {
+        "n": 300,
+        "mean_delta": 0.018333333333333333,
+        "ci_low": -0.01,
+        "ci_high": 0.05,
+        "confidence_level": 0.9916666666666667,
+        "wins": 9,
+        "losses": 3,
+        "ties": 288,
+        "significant": false,
+        "n_resamples": 10000,
+        "seed": 42,
+        "mode_a": "dense",
+        "mode_b": "hybrid",
+        "metric": "recall@100"
+      }
+    },
+    {
+      "a": "hybrid",
+      "b": "hybrid_rerank",
+      "metric": "ndcg@10",
+      "nominal": {
+        "n": 300,
+        "mean_delta": -0.02020954784836715,
+        "ci_low": -0.04962092518189943,
+        "ci_high": 0.009531375366638445,
+        "confidence_level": 0.95,
+        "wins": 55,
+        "losses": 62,
+        "ties": 183,
+        "significant": false,
+        "n_resamples": 10000,
+        "seed": 42,
+        "mode_a": "hybrid",
+        "mode_b": "hybrid_rerank",
+        "metric": "ndcg@10"
+      },
+      "bonferroni": {
+        "n": 300,
+        "mean_delta": -0.02020954784836715,
+        "ci_low": -0.06088752214260863,
+        "ci_high": 0.018907914078963396,
+        "confidence_level": 0.9916666666666667,
+        "wins": 55,
+        "losses": 62,
+        "ties": 183,
+        "significant": false,
+        "n_resamples": 10000,
+        "seed": 42,
+        "mode_a": "hybrid",
+        "mode_b": "hybrid_rerank",
+        "metric": "ndcg@10"
+      }
+    },
+    {
+      "a": "hybrid",
+      "b": "hybrid_rerank",
+      "metric": "recall@100",
+      "nominal": {
+        "n": 300,
+        "mean_delta": 0.0,
+        "ci_low": 0.0,
+        "ci_high": 0.0,
+        "confidence_level": 0.95,
+        "wins": 0,
+        "losses": 0,
+        "ties": 300,
+        "significant": false,
+        "n_resamples": 10000,
+        "seed": 42,
+        "mode_a": "hybrid",
+        "mode_b": "hybrid_rerank",
+        "metric": "recall@100"
+      },
+      "bonferroni": {
+        "n": 300,
+        "mean_delta": 0.0,
+        "ci_low": 0.0,
+        "ci_high": 0.0,
+        "confidence_level": 0.9916666666666667,
+        "wins": 0,
+        "losses": 0,
+        "ties": 300,
+        "significant": false,
+        "n_resamples": 10000,
+        "seed": 42,
+        "mode_a": "hybrid",
+        "mode_b": "hybrid_rerank",
+        "metric": "recall@100"
+      }
+    }
+  ]
+}

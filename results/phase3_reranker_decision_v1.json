@@ -1,0 +1,242 @@
+{
+  "adoption_gate": [
+    "Independent, domain-relevant validation with frozen queries and human-reviewed relevance labels.",
+    "Predeclared quality metrics and acceptance thresholds.",
+    "Repeated latency and compute-cost evaluation on the intended serving hardware.",
+    "No unacceptable regression in candidate coverage, relevance or reliability."
+  ],
+  "decision_status": "evaluation_decision",
+  "default_retrieval_strategy": "hybrid",
+  "limitations": [
+    "The SciFact evaluation queries were previously inspected; results are reproducible but not confirmatory.",
+    "CPU latency is environment-specific and is not a deployed-service SLO.",
+    "Truncation analysis is descriptive and does not establish causal ranking impact."
+  ],
+  "medcpt_challenger": {
+    "adoption_blockers": [
+      "Previously inspected SciFact queries; no independent holdout evidence.",
+      "Dedicated MedCPT repeated latency and deployment-cost evaluation not established by this A/B artifact."
+    ],
+    "confirmatory": false,
+    "decision": "advance_to_independent_validation; do_not_select_as_production_default_yet",
+    "exploratory_results": {
+      "mrr@10": {
+        "baseline_mean": 0.6567830687830688,
+        "bonferroni_adjusted_98_75_percent_ci": [
+          0.06944823908730158,
+          0.15495323247354498
+        ],
+        "mean_delta_medcpt_minus_baseline": 0.11116005291005289,
+        "medcpt_mean": 0.7679431216931217,
+        "nominal_95_percent_ci": [
+          0.07880664682539683,
+          0.14526990740740742
+        ],
+        "query_level_losses": 22,
+        "query_level_ties": 196,
+        "query_level_wins": 82
+      },
+      "ndcg@10": {
+        "baseline_mean": 0.6900901836409472,
+        "bonferroni_adjusted_98_75_percent_ci": [
+          0.06863850446092762,
+          0.14467692626585893
+        ],
+        "mean_delta_medcpt_minus_baseline": 0.105971496362179,
+        "medcpt_mean": 0.7960616800031263,
+        "nominal_95_percent_ci": [
+          0.07712154848482736,
+          0.13667577174216322
+        ],
+        "query_level_losses": 24,
+        "query_level_ties": 187,
+        "query_level_wins": 89
+      },
+      "precision@10": {
+        "baseline_mean": 0.09199999999999998,
+        "bonferroni_adjusted_98_75_percent_ci": [
+          0.004333333333333334,
+          0.015
+        ],
+        "mean_delta_medcpt_minus_baseline": 0.009333333333333332,
+        "medcpt_mean": 0.10133333333333332,
+        "nominal_95_percent_ci": [
+          0.005333333333333334,
+          0.013333333333333334
+        ],
+        "query_level_losses": 5,
+        "query_level_ties": 263,
+        "query_level_wins": 32
+      },
+      "recall@10": {
+        "baseline_mean": 0.821111111111111,
+        "bonferroni_adjusted_98_75_percent_ci": [
+          0.03733333333333333,
+          0.13122222222222224
+        ],
+        "mean_delta_medcpt_minus_baseline": 0.08177777777777777,
+        "medcpt_mean": 0.902888888888889,
+        "nominal_95_percent_ci": [
+          0.04511111111111111,
+          0.1201111111111111
+        ],
+        "query_level_losses": 5,
+        "query_level_ties": 263,
+        "query_level_wins": 32
+      }
+    },
+    "mean_candidate_recall_at_50": 0.9405555555555556,
+    "same_fixed_candidate_pool": true
+  },
+  "ms_marco_cross_encoder": {
+    "decision": "keep_default_off; retain_as_optional_experimental_reranker",
+    "paired_statistical_comparisons": {
+      "ndcg@10": {
+        "a": "hybrid",
+        "b": "hybrid_rerank",
+        "bonferroni": {
+          "ci_high": 0.018907914078963396,
+          "ci_low": -0.06088752214260863,
+          "confidence_level": 0.9916666666666667,
+          "losses": 62,
+          "mean_delta": -0.02020954784836715,
+          "metric": "ndcg@10",
+          "mode_a": "hybrid",
+          "mode_b": "hybrid_rerank",
+          "n": 300,
+          "n_resamples": 10000,
+          "seed": 42,
+          "significant": false,
+          "ties": 183,
+          "wins": 55
+        },
+        "metric": "ndcg@10",
+        "nominal": {
+          "ci_high": 0.009531375366638445,
+          "ci_low": -0.04962092518189943,
+          "confidence_level": 0.95,
+          "losses": 62,
+          "mean_delta": -0.02020954784836715,
+          "metric": "ndcg@10",
+          "mode_a": "hybrid",
+          "mode_b": "hybrid_rerank",
+          "n": 300,
+          "n_resamples": 10000,
+          "seed": 42,
+          "significant": false,
+          "ties": 183,
+          "wins": 55
+        }
+      },
+      "recall@100": {
+        "a": "hybrid",
+        "b": "hybrid_rerank",
+        "bonferroni": {
+          "ci_high": 0.0,
+          "ci_low": 0.0,
+          "confidence_level": 0.9916666666666667,
+          "losses": 0,
+          "mean_delta": 0.0,
+          "metric": "recall@100",
+          "mode_a": "hybrid",
+          "mode_b": "hybrid_rerank",
+          "n": 300,
+          "n_resamples": 10000,
+          "seed": 42,
+          "significant": false,
+          "ties": 300,
+          "wins": 0
+        },
+        "metric": "recall@100",
+        "nominal": {
+          "ci_high": 0.0,
+          "ci_low": 0.0,
+          "confidence_level": 0.95,
+          "losses": 0,
+          "mean_delta": 0.0,
+          "metric": "recall@100",
+          "mode_a": "hybrid",
+          "mode_b": "hybrid_rerank",
+          "n": 300,
+          "n_resamples": 10000,
+          "seed": 42,
+          "significant": false,
+          "ties": 300,
+          "wins": 0
+        }
+      }
+    },
+    "quality_point_changes": {
+      "candidate_recall@50": {
+        "delta": 0.0,
+        "hybrid": 0.9405555555555555,
+        "hybrid_rerank": 0.9405555555555555
+      },
+      "mrr@10": {
+        "delta": -0.019765873015873292,
+        "hybrid": 0.6765489417989419,
+        "hybrid_rerank": 0.6567830687830686
+      },
+      "ndcg@10": {
+        "delta": -0.02020954784836715,
+        "hybrid": 0.7102997314893141,
+        "hybrid_rerank": 0.690090183640947
+      },
+      "precision@10": {
+        "delta": -0.001333333333333353,
+        "hybrid": 0.09333333333333368,
+        "hybrid_rerank": 0.09200000000000033
+      },
+      "recall@10": {
+        "delta": -0.011944444444444535,
+        "hybrid": 0.8330555555555555,
+        "hybrid_rerank": 0.821111111111111
+      },
+      "recall@100": {
+        "delta": 0.0,
+        "hybrid": 0.9616666666666667,
+        "hybrid_rerank": 0.9616666666666667
+      }
+    },
+    "reasoning": [
+      "No measured improvement in Precision@10, Recall@10, MRR@10 or nDCG@10 point estimates versus Hybrid.",
+      "Recall@100 and Candidate Recall@50 are unchanged; reranking does not improve candidate coverage.",
+      "Paired nDCG@10 comparison is not statistically significant after the frozen six-comparison Bonferroni correction.",
+      "Repeated CPU latency is substantially higher, with reranking dominating total time."
+    ],
+    "repeated_latency": {
+      "protocol_valid": true,
+      "rerank_stage_ms": {
+        "count": 1500,
+        "p50_ms": 4800.619750007172,
+        "p95_ms": 8347.733809995407,
+        "p99_ms": 9456.283922989676
+      },
+      "samples_per_strategy": 1500,
+      "total_latency": {
+        "p50": {
+          "hybrid_ms": 106.6617999895243,
+          "hybrid_rerank_ms": 4915.3259999875445,
+          "ratio": 46.08328380423262
+        },
+        "p95": {
+          "hybrid_ms": 186.09877998096636,
+          "hybrid_rerank_ms": 8512.309205021302,
+          "ratio": 45.74081144375001
+        },
+        "p99": {
+          "hybrid_ms": 273.54060099518387,
+          "hybrid_rerank_ms": 9599.956948995528,
+          "ratio": 35.095181168972246
+        }
+      }
+    }
+  },
+  "schema_version": 1,
+  "source_artifacts": {
+    "phase3_acceptance_final_v1.json": "3357b12b389452cc80aa81a09a83616d5d3668ae0c9e3b27a1accd7a505c9972",
+    "phase3_latency_doclevel_v1.json": "5f0900511a695355e8058a3183f86155b284c3ca735701ef8eb9069a5fd5249e",
+    "phase3_medcpt_statistical_comparisons_v1.json": "09e8afa610d41c5a2e1da3b13506a065c7bca96a794abffc91210fce3577fca1",
+    "phase3_statistical_comparisons_full_precision_v1.json": "b6669b30f2cd531bcf4955f39f148bfec36517e1e0daf917effc9a0228035d53"
+  }
+}
