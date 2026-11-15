@@ -1,0 +1,9 @@
+Comparison family: 6 hypotheses; Bonferroni family alpha=0.050; adjusted per-comparison confidence=99.167%
+| A | B | Metric | Mean delta (B - A) | 95% CI (nominal) | Bonferroni CI (99.167%) | W/L/T | Significant after adjustment? |
+|---|---|---|---:|---|---|---:|:---:|
+| bm25 | dense | ndcg@10 | +0.041 | [+0.004, +0.078] | [-0.008, +0.091] | 82/54/164 | no |
+| bm25 | dense | recall@100 | +0.057 | [+0.021, +0.094] | [+0.009, +0.107] | 28/8/264 | yes |
+| dense | hybrid | ndcg@10 | +0.005 | [-0.023, +0.033] | [-0.035, +0.043] | 59/55/186 | no |
+| dense | hybrid | recall@100 | +0.018 | [-0.003, +0.040] | [-0.010, +0.050] | 9/3/288 | no |
+| hybrid | hybrid_rerank | ndcg@10 | -0.020 | [-0.050, +0.010] | [-0.061, +0.019] | 55/62/183 | no |
+| hybrid | hybrid_rerank | recall@100 | +0.000 | [+0.000, +0.000] | [+0.000, +0.000] | 0/0/300 | no |

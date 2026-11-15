@@ -1,0 +1,161 @@
+{
+  "cache_configuration": {
+    "latency": {
+      "document_embedding_cache_enabled": true,
+      "document_embedding_cache_stats": {
+        "hits": 0,
+        "misses": 5183
+      },
+      "query_embedding_cache_enabled": false
+    },
+    "quality": {
+      "cache_dir": null,
+      "cache_disabled_reason": null,
+      "cache_enabled": false
+    }
+  },
+  "config_fingerprints": {
+    "latency": "ff2623bde97b39b44cdc157ddd1628cd0c3e36dd107613b3c1738990d8968851",
+    "quality": "9466527c9a175714b611064a9674e42e49160486de967d0617fd408c270cc09d"
+  },
+  "git": {
+    "both_working_trees_clean": true,
+    "latency_commit": "0f3b7c03f2c1afd4e49c8d9a0b6a54e4ba23cbca",
+    "quality_commit": "0f3b7c03f2c1afd4e49c8d9a0b6a54e4ba23cbca"
+  },
+  "latency_artifact": "phase3_latency_doclevel_v1.json",
+  "latency_prefix": {
+    "bge_prefix_enabled": null,
+    "parity_proven": false,
+    "status": "not_recorded_in_artifact"
+  },
+  "latency_protocol": {
+    "actual_samples_per_strategy": {
+      "bm25": 1500,
+      "dense": 1500,
+      "hybrid": 1500,
+      "hybrid_rerank": 1500
+    },
+    "expected_samples_per_strategy": 1500,
+    "minimum_required_trials": 5,
+    "protocol_valid": true,
+    "query_embedding_cache_enabled": false,
+    "strategy_order_rotates_each_trial": true,
+    "trials": 5,
+    "warmups_excluded": true
+  },
+  "limitations": [
+    "Model revisions match requested pinned revisions and local cached snapshots; artifacts do not attest the exact revision loaded in memory.",
+    "Quality records BGE query prefix enabled; latency artifact does not record the flag or original CLI invocation, so exact prefix parity is unverified.",
+    "Latency intentionally disables query-embedding cache and enables document-embedding cache; timings must be interpreted under this configuration.",
+    "Latency measurements are from the recorded local CPU environment and are not a deployed-service SLO."
+  ],
+  "models": {
+    "embedding": {
+      "latency": {
+        "model_id": "BAAI/bge-small-en-v1.5",
+        "requested_pinned": true,
+        "requested_revision": "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a",
+        "resolved_revision": "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a",
+        "revision_status": "verified_cached_snapshot_match",
+        "revision_verified": true,
+        "verified_from_loaded_model": false,
+        "verified_from_local_snapshot": true
+      },
+      "quality": {
+        "model_id": "BAAI/bge-small-en-v1.5",
+        "requested_pinned": true,
+        "requested_revision": "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a",
+        "resolved_revision": "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a",
+        "revision_status": "verified_cached_snapshot_match",
+        "revision_verified": true,
+        "verified_from_loaded_model": false,
+        "verified_from_local_snapshot": true
+      }
+    },
+    "reranker": {
+      "latency": {
+        "model_id": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+        "requested_pinned": true,
+        "requested_revision": "233902d25c440f23af6f7d6e94d2946bac0bee0a",
+        "resolved_revision": "233902d25c440f23af6f7d6e94d2946bac0bee0a",
+        "revision_status": "verified_cached_snapshot_match",
+        "revision_verified": true,
+        "verified_from_loaded_model": false,
+        "verified_from_local_snapshot": true
+      },
+      "quality": {
+        "model_id": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+        "requested_pinned": true,
+        "requested_revision": "233902d25c440f23af6f7d6e94d2946bac0bee0a",
+        "resolved_revision": "233902d25c440f23af6f7d6e94d2946bac0bee0a",
+        "revision_status": "verified_cached_snapshot_match",
+        "revision_verified": true,
+        "verified_from_loaded_model": false,
+        "verified_from_local_snapshot": true
+      }
+    }
+  },
+  "quality_artifact": "phase3_acceptance_final_v1.json",
+  "quality_prefix": {
+    "bge_prefix_enabled": true
+  },
+  "runtime": {
+    "latency": {
+      "hardware": {
+        "cuda_available": false,
+        "cuda_device": null,
+        "logical_cpu_count": 8,
+        "platform": "Windows-11-10.0.26300-SP0",
+        "processor": "Intel64 Family 6 Model 140 Stepping 1, GenuineIntel",
+        "python_version": "3.12.10",
+        "torch_num_interop_threads": 4,
+        "torch_num_threads": 4
+      },
+      "packages": {
+        "huggingface-hub": "1.33.0",
+        "numpy": "2.5.3",
+        "sentence-transformers": "6.1.0",
+        "torch": "2.14.1",
+        "transformers": "5.19.0"
+      }
+    },
+    "quality": {
+      "numpy": "2.5.3",
+      "platform": "Windows-11-10.0.26300-SP0",
+      "python": "3.12.10"
+    }
+  },
+  "schema_version": 1,
+  "shared_inputs": {
+    "chunking_latency": {
+      "enabled": false,
+      "overlap": 40,
+      "size": null
+    },
+    "chunking_quality": {
+      "enabled": false,
+      "overlap": 40,
+      "size": null
+    },
+    "corpus_sha256": "91af725e167cfbfcb272e77ee272233e255718b8c515e08a36cfa734c520fb97",
+    "evaluated_queries": 300,
+    "level_latency": "doc",
+    "level_quality": "doc",
+    "queries_and_relevance_sha256": "89f248368661e4fad34f07b388939c5149ed69e77911deec48e32a85bc069489",
+    "query_relevance_fingerprint": "8674ce8b992faba06794d0bec7cb806a99373eecc5466372aaf829741ec2f738",
+    "searchable_documents": 5183
+  },
+  "source_code": {
+    "file_hashes_identical": true,
+    "latency_file_count": 27,
+    "latency_sha256": "62c558d16779321dd003b66e15d66d1e899ee9f299ad42f40c57de137bf96c33",
+    "quality_file_count": 27,
+    "quality_sha256": "62c558d16779321dd003b66e15d66d1e899ee9f299ad42f40c57de137bf96c33"
+  },
+  "source_sha256": {
+    "latency": "5f0900511a695355e8058a3183f86155b284c3ca735701ef8eb9069a5fd5249e",
+    "quality": "3357b12b389452cc80aa81a09a83616d5d3668ae0c9e3b27a1accd7a505c9972"
+  },
+  "status": "reconciled_with_limitations"
+}
